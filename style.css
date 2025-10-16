@@ -1,3 +1,78 @@
+/* Admin Modal Styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: #181c22;
+  padding: 32px 24px 24px 24px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  min-width: 320px;
+  max-width: 90vw;
+  position: relative;
+}
+.modal-content h2 {
+  margin-top: 0;
+  margin-bottom: 18px;
+  font-size: 1.5rem;
+  color: #fff;
+}
+.modal-content label {
+  display: block;
+  margin-bottom: 6px;
+  color: #ccc;
+  font-size: 1rem;
+}
+.modal-content input[type="email"],
+.modal-content input[type="password"] {
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 16px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: #222;
+  color: #fff;
+  font-size: 1rem;
+}
+.modal-content button[type="submit"] {
+  width: 100%;
+  padding: 10px;
+  background: #00d266;
+  color: #181c22;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.modal-content button[type="submit"]:hover {
+  background: #00b255;
+}
+.modal-content .close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 1.5rem;
+  color: #fff;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.modal-content #admin-login-error {
+  margin-top: 8px;
+  color: #ff4d4f;
+  font-size: 0.95rem;
+}
 * {
   margin: 0;
   padding: 0;
