@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase Data Upload - Zonera</title>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #0a0e1a;
+      color: #e1e8ed;
+    }
+    h1 { color: #00D266; }
+    button {
+      background: #00D266;
+      color: #0a0e1a;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 10px 5px;
+    }
+    button:hover { background: #00ff77; }
+    button:disabled {
+      background: #444;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 15px;
+      background: #141b2d;
+      border-radius: 8px;
+      border-left: 4px solid #00D266;
+    }
+    .error {
+      border-left-color: #ff4444;
+    }
+    pre {
+      background: #0d1221;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔥 Firebase Data Upload Tool</h1>
+  <p>This tool will upload sample match and league data to your Firebase Firestore.</p>
+  
+  <div>
+    <button id="uploadBtn" onclick="uploadSampleData()">Upload Sample Data</button>
+    <button onclick="clearAllData()">Clear All Data</button>
+    <button onclick="checkConnection()">Test Connection</button>
+  </div>
+
+  <div id="status"></div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+    const statusDiv = document.getElementById('status');
+
+    function showStatus(message, isError = false) {
+      statusDiv.className = isError ? 'status error' : 'status';
+      statusDiv.innerHTML += `<div>${message}</div>`;
+    }
+
+    function checkConnection() {
+      statusDiv.innerHTML = '';
+      showStatus('🔍 Testing Firebase connection...');
+      
+      if (typeof db !== 'undefined') {
+        showStatus('✅ Firebase is connected!');
+        showStatus(`📊 Project ID: ${firebase.app().options.projectId}`);
+      } else {
+        showStatus('❌ Firebase is not initialized', true);
+      }
+    }
+
+    async function uploadSampleData() {
+      statusDiv.innerHTML = '';
+      showStatus('🚀 Starting data upload...');
+      
+      const uploadBtn = document.getElementById('uploadBtn');
+      uploadBtn.disabled = true;
+
+      try {
+        // Upload Leagues
+        showStatus('📝 Creating leagues...');
+        
+        const leagues = [
+          { id: 'premier-league', name: 'Premier League', country: 'England', logo: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+          { id: 'la-liga', name: 'La Liga', country: 'Spain', logo: '🇪🇸' },
+          { id: 'serie-a', name: 'Serie A', country: 'Italy', logo: '🇮🇹' },
+          { id: 'bundesliga', name: 'Bundesliga', country: 'Germany', logo: '🇩🇪' },
+          { id: 'ligue-1', name: 'Ligue 1', country: 'France', logo: '🇫🇷' }
+        ];
+
+        for (const league of leagues) {
+          await db.collection('leagues').doc(league.id).set({
+            name: league.name,
+            country: league.country,
+            logo: league.logo
+          });
+          showStatus(`✅ Created: ${league.name}`);
+        }
+
+        // Upload Matches
+        showStatus('<br>📝 Creating matches...');
+        
+        const matches = [
+          {
+            leagueId: 'premier-league',
+            homeTeam: 'Manchester City',
+            awayTeam: 'Arsenal',
+            homeScore: 2,
+            awayScore: 2,
+            status: 'live',
+            minute: '78\'',
+            homeShots: 14,
+            awayShots: 11,
+            homePossession: 58,
+            awayPossession: 42,
+            time: '15:00'
+          },
+          {
+            leagueId: 'premier-league',
+            homeTeam: 'Liverpool',
+            awayTeam: 'Chelsea',
+            homeScore: 1,
+            awayScore: 0,
+            status: 'finished',
+            minute: 'FT',
+            homeShots: 16,
+            awayShots: 8,
+            homePossession: 62,
+            awayPossession: 38,
+            time: '12:30'
+          },
+          {
+            leagueId: 'premier-league',
+            homeTeam: 'Manchester United',
+            awayTeam: 'Tottenham',
+            homeScore: null,
+            awayScore: null,
+            status: 'upcoming',
+            minute: '',
+            homeShots: 0,
+            awayShots: 0,
+            homePossession: 0,
+            awayPossession: 0,
+            time: '17:30'
+          },
+          {
+            leagueId: 'la-liga',
+            homeTeam: 'Real Madrid',
+            awayTeam: 'Barcelona',
+            homeScore: 1,
+            awayScore: 1,
+            status: 'live',
+            minute: '65\'',
+            homeShots: 12,
+            awayShots: 15,
+            homePossession: 48,
+            awayPossession: 52,
+            time: '16:00'
+          },
+          {
+            leagueId: 'la-liga',
+            homeTeam: 'Atletico Madrid',
+            awayTeam: 'Sevilla',
+            homeScore: null,
+            awayScore: null,
+            status: 'upcoming',
+            minute: '',
+            homeShots: 0,
+            awayShots: 0,
+            homePossession: 0,
+            awayPossession: 0,
+            time: '19:00'
+          },
+          {
+            leagueId: 'serie-a',
+            homeTeam: 'AC Milan',
+            awayTeam: 'Inter Milan',
+            homeScore: 2,
+            awayScore: 3,
+            status: 'finished',
+            minute: 'FT',
+            homeShots: 13,
+            awayShots: 17,
+            homePossession: 51,
+            awayPossession: 49,
+            time: '14:00'
+          },
+          {
+            leagueId: 'bundesliga',
+            homeTeam: 'Bayern Munich',
+            awayTeam: 'Borussia Dortmund',
+            homeScore: 3,
+            awayScore: 2,
+            status: 'live',
+            minute: '82\'',
+            homeShots: 18,
+            awayShots: 12,
+            homePossession: 65,
+            awayPossession: 35,
+            time: '15:30'
+          },
+          {
+            leagueId: 'ligue-1',
+            homeTeam: 'PSG',
+            awayTeam: 'Marseille',
+            homeScore: 4,
+            awayScore: 1,
+            status: 'finished',
+            minute: 'FT',
+            homeShots: 20,
+            awayShots: 6,
+            homePossession: 70,
+            awayPossession: 30,
+            time: '13:00'
+          }
+        ];
+
+        for (const match of matches) {
+          await db.collection('matches').add(match);
+          showStatus(`✅ Created: ${match.homeTeam} vs ${match.awayTeam}`);
+        }
+
+        showStatus('<br>🎉 <strong>All data uploaded successfully!</strong>');
+        showStatus('👉 Now open index.html to see your matches!');
+
+      } catch (error) {
+        showStatus(`❌ Error: ${error.message}`, true);
+        console.error('Upload error:', error);
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    }
+
+    async function clearAllData() {
+      if (!confirm('Are you sure you want to delete all data?')) return;
+
+      statusDiv.innerHTML = '';
+      showStatus('🗑️ Clearing data...');
+
+      try {
+        // Delete all matches
+        const matchesSnapshot = await db.collection('matches').get();
+        for (const doc of matchesSnapshot.docs) {
+          await doc.ref.delete();
+        }
+        showStatus('✅ Matches cleared');
+
+        // Delete all leagues
+        const leaguesSnapshot = await db.collection('leagues').get();
+        for (const doc of leaguesSnapshot.docs) {
+          await doc.ref.delete();
+        }
+        showStatus('✅ Leagues cleared');
+
+        showStatus('<br>🎉 All data cleared successfully!');
+      } catch (error) {
+        showStatus(`❌ Error: ${error.message}`, true);
+        console.error('Clear error:', error);
+      }
+    }
+
+    // Auto-check connection on load
+    window.onload = checkConnection;
+  </script>
+</body>
+</html>
