@@ -438,8 +438,52 @@ setInterval(() => {
 
 // Initialize
 window.onload = () => {
+  // Admin Login Modal & Panel Logic
+  const adminLoginBtn = document.getElementById('admin-login-btn');
+  const adminModal = document.getElementById('admin-modal');
+  const closeAdminModal = document.getElementById('close-admin-modal');
+  const adminLoginForm = document.getElementById('admin-login-form');
+  const adminLoginError = document.getElementById('admin-login-error');
+  const adminPanel = document.getElementById('admin-panel');
+
+  if (adminLoginBtn && adminModal && closeAdminModal) {
+    adminLoginBtn.addEventListener('click', () => {
+      adminModal.style.display = 'flex';
+    });
+    closeAdminModal.addEventListener('click', () => {
+      adminModal.style.display = 'none';
+    });
+    window.addEventListener('click', (event) => {
+      if (event.target === adminModal) {
+        adminModal.style.display = 'none';
+      }
+    });
+  }
+
+  // Admin Login Authentication
+  if (adminLoginForm) {
+    adminLoginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('admin-email').value;
+      const password = document.getElementById('admin-password').value;
+      adminLoginError.style.display = 'none';
+      try {
+        // Only allow specific admin credentials
+        if (email === 'mrflux3602' && password === '3602mskt') {
+          adminModal.style.display = 'none';
+          if (adminPanel) adminPanel.style.display = 'block';
+        } else {
+          throw new Error('Invalid credentials');
+        }
+      } catch (err) {
+        adminLoginError.textContent = 'Invalid email or password.';
+        adminLoginError.style.display = 'block';
+      }
+    });
+  }
+
+  // Site Initialization
   loadDates();
-  
   // Check if Firebase is available
   if (typeof db !== 'undefined') {
     console.log('Loading data from Firebase...');
@@ -450,4 +494,4 @@ window.onload = () => {
     console.log('Firebase not available, using mock data...');
     loadMockData();
   }
-};
+}
