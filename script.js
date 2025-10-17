@@ -511,8 +511,10 @@ window.onload = () => {
         const news = doc.data();
         const card = document.createElement('div');
         card.className = 'news-card';
+        // Use a fallback if imageUrl is missing or invalid
+        let imgSrc = news.imageUrl && news.imageUrl.startsWith('http') ? news.imageUrl : 'https://via.placeholder.com/80x80?text=No+Image';
         card.innerHTML = `
-          <img class="news-card-img" src="${news.imageUrl || 'https://via.placeholder.com/80x80?text=No+Image'}" alt="News Image">
+          <img class="news-card-img" src="${imgSrc}" alt="News Image" onerror="this.src='https://via.placeholder.com/80x80?text=No+Image'">
           <div class="news-card-content">
             <div class="news-card-title">${news.title}</div>
             <div class="news-card-preview">${news.content}</div>
@@ -611,6 +613,57 @@ window.onload = () => {
       }
     });
   }
+    import { db, collection, addDoc } from './firebase-config.js';
+
+    async function fetchLiveMatches() {
+  const response = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?live=all', {
+    method: 'GET',
+    headers: {
+      'X-RapidAPI-Key': '617e8c14cae54043649b511c841119f4',
+      'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
+    }
+  });
+  const data = await response.json();
+  
+  data.response.forEach(match => {
+    const matchData = {
+      homeTeam: match.teams.home.name,
+      awayTeam: match.teams.away.name,
+      homeScore: match.goals.home,
+      awayScore: match.goals.away,
+      status: match.fixture.status.elapsed,
+      date: new Date(match.fixture.timestamp * 1000)
+    };
+    saveMatchResult(matchData);
+  });
+}
+
+// Fetch every 60 seconds
+setInterval(fetchLiveMatches, 60000);
+
+
+// Example: function to store a live match
+async function saveMatchResult(matchData) {
+  try {
+    await addDoc(collection(db, "liveMatches"), matchData);
+    console.log("Match saved ✅", matchData);
+  } catch (error) {
+    console.error("Error saving match: ", error);
+  }
+}
+
+// Example usage:
+const match = {
+  homeTeam: "India",
+  awayTeam: "Singapore",
+  homeScore: 2,
+  awayScore: 1,
+  status: "45'",  // current minute
+  date: new Date()
+};
+
+saveMatchResult(match);
+
 
   // Site Initialization
   loadDates();
