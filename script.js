@@ -465,50 +465,65 @@ window.onload = () => {
         try {
           imageUrl = await uploadImage(imageInput.files[0]);
         } catch (err) {
+          console.error('Image upload error:', err);
           imageUrl = '';
         }
       }
       // Save news to Firestore
       if (typeof db !== 'undefined') {
-        await db.collection('news').add({
-          title,
-          content,
-          imageUrl,
-          created: new Date().toISOString()
-        });
-        newsSuccess.textContent = 'News added!';
-        newsSuccess.style.display = 'block';
-        newsForm.reset();
-        loadNews();
+        try {
+          await db.collection('news').add({
+            title,
+            content,
+            imageUrl,
+            created: new Date().toISOString()
+          });
+          newsSuccess.textContent = 'News added!';
+          newsSuccess.style.display = 'block';
+          newsForm.reset();
+          await loadNews();
+        } catch (err) {
+          console.error('Error saving news:', err);
+          newsSuccess.textContent = 'Error saving news.';
+          newsSuccess.style.display = 'block';
+        }
       } else {
         newsSuccess.textContent = 'Firebase not available.';
         newsSuccess.style.display = 'block';
+        console.error('Firebase not available.');
       }
     });
   }
 
   // Load News and Display Cards
   async function loadNews() {
-    if (typeof db === 'undefined' || !newsList) return;
-    const snapshot = await db.collection('news').orderBy('created', 'desc').get();
-    newsList.innerHTML = '';
-    snapshot.forEach(doc => {
-      const news = doc.data();
-      const card = document.createElement('div');
-      card.className = 'news-card';
-      card.innerHTML = `
-        <img class="news-card-img" src="${news.imageUrl || 'https://via.placeholder.com/80x80?text=No+Image'}" alt="News Image">
-        <div class="news-card-content">
-          <div class="news-card-title">${news.title}</div>
-          <div class="news-card-preview">${news.content}</div>
-        </div>
-      `;
-      card.addEventListener('click', () => {
-        // Open full news page (simple modal for now)
-        showNewsModal(news);
+    if (typeof db === 'undefined' || !newsList) {
+      console.error('Cannot load news: Firebase or newsList missing');
+      return;
+    }
+    try {
+      const snapshot = await db.collection('news').orderBy('created', 'desc').get();
+      newsList.innerHTML = '';
+      snapshot.forEach(doc => {
+        const news = doc.data();
+        const card = document.createElement('div');
+        card.className = 'news-card';
+        card.innerHTML = `
+          <img class="news-card-img" src="${news.imageUrl || 'https://via.placeholder.com/80x80?text=No+Image'}" alt="News Image">
+          <div class="news-card-content">
+            <div class="news-card-title">${news.title}</div>
+            <div class="news-card-preview">${news.content}</div>
+          </div>
+        `;
+        card.addEventListener('click', () => {
+          // Open full news page (simple modal for now)
+          showNewsModal(news);
+        });
+        newsList.appendChild(card);
       });
-      newsList.appendChild(card);
-    });
+    } catch (err) {
+      console.error('Error loading news:', err);
+    }
   }
 
   // Show full news modal (simple implementation)
