@@ -121,14 +121,31 @@
 
 <!-- Admin Panel (hidden by default) -->
 <div id="admin-panel" style="display:none;">
-  <h2>Admin Panel</h2>
-  <form id="news-form">
-    <label for="news-title">News Title:</label>
-    <input type="text" id="news-title" required>
-    <label for="news-content">Content:</label>
-    <textarea id="news-content" required></textarea>
-    <button type="submit">Add News</button>
-  </form>
-  <div id="news-success" style="color:green;display:none;"></div>
+  <div class="admin-card">
+    <h2>Admin Panel</h2>
+    <form id="news-form">
+      <div class="form-row">
+        <label for="news-title">Title</label>
+        <input type="text" id="news-title" required>
+      </div>
+      <div class="form-row">
+        <label for="news-content">Content</label>
+        <textarea id="news-content" rows="3" required></textarea>
+      </div>
+      <div class="form-row">
+        <label for="news-image">Image</label>
+        <input type="file" id="news-image" accept="image/*">
+      </div>
+      <button type="submit" class="add-news-btn">Add News</button>
+    </form>
+    <div id="news-success" style="color:green;display:none;"></div>
+  </div>
 </div>
+
+<!-- News Section (right side) -->
+<section id="news-section" class="news-section">
+  <div class="news-list" id="news-list">
+    <!-- News cards will be loaded here -->
+  </div>
+</section>
 </html>
