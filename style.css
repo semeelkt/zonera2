@@ -59,15 +59,18 @@
 .news-section {
 /* Unique News Container Box */
 .news-container-box {
+  position: fixed;
+  top: 80px; /* height of navbar + some space */
+  right: 32px;
   background: linear-gradient(135deg, #23272f 60%, #181a20 100%);
   border-radius: 18px;
   box-shadow: 0 6px 32px rgba(44, 62, 80, 0.18);
   padding: 24px 18px 18px 18px;
-  margin: 18px 0;
   min-width: 320px;
   max-width: 420px;
-  margin-left: auto;
-  margin-right: 24px;
+  z-index: 999;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
 }
 
 .news-card {
@@ -884,6 +887,17 @@ footer p {
 
 /* ========== RESPONSIVE ========== */
 @media (max-width: 768px) {
+  .news-container-box {
+    position: static;
+    max-width: 100%;
+    margin: 0 8px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(44, 62, 80, 0.12);
+    padding: 12px 8px 8px 8px;
+    min-width: unset;
+    max-height: unset;
+    overflow-y: visible;
+  }
   .header-container {
     padding: 12px 16px;
   }
