@@ -1,391 +1,154 @@
-// ====== FIREBASE DATA MANAGEMENT ======
-let matchData = {
-  leagues: []
-};
 
-// Fetch matches from Firebase Firestore
-async function fetchMatchesFromFirebase() {
-  try {
-    console.log('Fetching matches from Firebase...');
-    const matchesSnapshot = await db.collection('matches').get();
-    const leaguesSnapshot = await db.collection('leagues').get();
-    
-    // Build leagues map
-    const leaguesMap = {};
-    leaguesSnapshot.forEach(doc => {
-      const leagueData = doc.data();
-      leaguesMap[doc.id] = {
-        id: doc.id,
-        name: leagueData.name,
-        country: leagueData.country,
-        logo: leagueData.logo || '⚽',
-        matches: []
-      };
-    });
-    
-    // Add matches to corresponding leagues
-    matchesSnapshot.forEach(doc => {
-      const match = { id: doc.id, ...doc.data() };
-      const leagueId = match.leagueId || 'other';
-      
-      if (leaguesMap[leagueId]) {
-        leaguesMap[leagueId].matches.push(match);
-      }
-    });
-    
-    // Convert map to array
-    matchData.leagues = Object.values(leaguesMap).filter(league => league.matches.length > 0);
-    
-    console.log('Firebase data loaded:', matchData);
-    loadMatches();
-  } catch (error) {
-    console.error('Error fetching from Firebase:', error);
-    // Fallback to mock data if Firebase fails
-    loadMockData();
-  }
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Live football scores, fixtures, and detailed match statistics">
+  <title>Zonera - Live Football Scores & Fixtures</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header>
+    <div class="header-container">
+      <div class="logo">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="#00D266" stroke-width="2"/>
+          <path d="M12 2C12 2 8 6 8 12C8 18 12 22 12 22" stroke="#00D266" stroke-width="2"/>
+          <path d="M12 2C12 2 16 6 16 12C16 18 12 22 12 22" stroke="#00D266" stroke-width="2"/>
+          <path d="M2 12H22" stroke="#00D266" stroke-width="2"/>
+        </svg>
+        <span>Zonera</span>
+      </div>
+      <nav>
+        <a href="#matches" class="active">Matches</a>
+        <a href="#leagues">Leagues</a>
+        <a href="#favorites">Favorites</a>
+        <a href="#news">News</a>
+      </nav>
+      <div class="header-actions">
+        <button class="icon-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+        </button>
+        <button class="icon-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+        </button>
+        <button id="admin-login-btn" class="icon-btn" title="Admin Login">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4z"></path>
+            <path d="M12 14c-4.418 0-8 1.79-8 4v2h16v-2c0-2.21-3.582-4-8-4z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
 
-// Real-time listener for matches (optional - for live updates)
-function listenToMatchUpdates() {
-  db.collection('matches').onSnapshot((snapshot) => {
-    console.log('Matches updated in real-time');
-    fetchMatchesFromFirebase();
-  });
-}
+  <!-- Date Navigation -->
+  <section class="date-nav">
+    <button class="date-btn prev">‹</button>
+    <div class="date-list" id="date-list">
+      <!-- Dates dynamically loaded -->
+    </div>
+    <button class="date-btn next">›</button>
+  </section>
 
-// Mock data structured by leagues (FotMob style) - FALLBACK
-function loadMockData() {
-  matchData = {
-    leagues: [
-      {
-        name: 'Premier League',
-        country: 'England',
-        logo: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-        matches: [
-        { 
-          id: 1,
-          homeTeam: 'Manchester City', 
-          awayTeam: 'Arsenal', 
-          homeScore: 2, 
-          awayScore: 2, 
-          status: 'live',
-          minute: '78\'',
-          homeShots: 14,
-          awayShots: 11,
-          homePossession: 58,
-          awayPossession: 42,
-          time: '15:00'
-        },
-        { 
-          id: 2,
-          homeTeam: 'Liverpool', 
-          awayTeam: 'Chelsea', 
-          homeScore: 1, 
-          awayScore: 0, 
-          status: 'finished',
-          minute: 'FT',
-          homeShots: 16,
-          awayShots: 8,
-          homePossession: 62,
-          awayPossession: 38,
-          time: '12:30'
-        },
-        { 
-          id: 3,
-          homeTeam: 'Manchester United', 
-          awayTeam: 'Tottenham', 
-          homeScore: null, 
-          awayScore: null, 
-          status: 'upcoming',
-          minute: '',
-          time: '17:30'
-        }
-      ]
-    },
-    {
-      name: 'La Liga',
-      country: 'Spain',
-      logo: '🇪🇸',
-      matches: [
-        { 
-          id: 4,
-          homeTeam: 'Real Madrid', 
-          awayTeam: 'Barcelona', 
-          homeScore: 1, 
-          awayScore: 1, 
-          status: 'live',
-          minute: '65\'',
-          homeShots: 12,
-          awayShots: 15,
-          homePossession: 48,
-          awayPossession: 52,
-          time: '16:00'
-        },
-        { 
-          id: 5,
-          homeTeam: 'Atletico Madrid', 
-          awayTeam: 'Sevilla', 
-          homeScore: null, 
-          awayScore: null, 
-          status: 'upcoming',
-          minute: '',
-          time: '19:00'
-        }
-      ]
-    },
-    {
-      name: 'Serie A',
-      country: 'Italy',
-      logo: '🇮🇹',
-      matches: [
-        { 
-          id: 6,
-          homeTeam: 'AC Milan', 
-          awayTeam: 'Inter Milan', 
-          homeScore: 2, 
-          awayScore: 3, 
-          status: 'finished',
-          minute: 'FT',
-          homeShots: 13,
-          awayShots: 17,
-          homePossession: 51,
-          awayPossession: 49,
-          time: '14:00'
-        }
-      ]
-    }
-  ]
-  };
-  loadMatches();
-}
 
-let currentFilter = 'all';
-// Store API matches by type
-let apiMatches = {
-  live: [],
-  finished: [],
-  upcoming: []
-};
-
-// Fetch matches from API for all types
-async function fetchApiMatches() {
-  const endpoints = {
-    live: 'https://v3.football.api-sports.io/fixtures?live=all',
-    finished: 'https://v3.football.api-sports.io/fixtures?status=FT',
-    upcoming: 'https://v3.football.api-sports.io/fixtures?status=NS'
-  };
-  const headers = {
-    'x-apisports-key': '617e8c14cae54043649b511c841119f4',
-    'x-rapidapi-host': 'v3.football.api-sports.io'
-  };
-  for (const type of Object.keys(endpoints)) {
-    try {
-      const response = await fetch(endpoints[type], { method: 'GET', headers });
-      const data = await response.json();
-      apiMatches[type] = data.response || [];
-    } catch (err) {
-      apiMatches[type] = [];
-      console.error('API error for', type, err);
-    }
-  }
-  renderApiMatches();
-}
-
-// Render matches from API grouped by league
-function renderApiMatches() {
-  const container = document.getElementById('league-groups');
-  container.innerHTML = '';
-  let type = currentFilter;
-  if (type === 'all') type = 'live'; // Default to live if 'all'
-  const matches = apiMatches[type];
-  if (!matches || matches.length === 0) {
-    container.innerHTML = '<div style="color:#8B92A1;text-align:center;padding:32px;">No matches scheduled</div>';
-    return;
-  }
-  // Group by league
-  const leagues = {};
-  matches.forEach(match => {
-    const leagueId = match.league.id;
-    if (!leagues[leagueId]) {
-      leagues[leagueId] = {
-        name: match.league.name,
-        country: match.league.country,
-        logo: match.league.logo || '⚽',
-        matches: []
-      };
-    }
-    leagues[leagueId].matches.push(match);
-  });
-  Object.values(leagues).forEach(league => {
-    const leagueGroup = document.createElement('div');
-    leagueGroup.className = 'league-group-card';
-    const leagueHeader = document.createElement('div');
-    leagueHeader.className = 'league-group-header';
-    leagueHeader.innerHTML = `
-      <span class="league-logo">${league.logo ? `<img src='${league.logo}' style='width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:6px;'>` : '⚽'}</span>
-      <span>${league.name}${league.country ? ' - ' + league.country : ''}</span>
-    `;
-    leagueGroup.appendChild(leagueHeader);
-    league.matches.forEach(match => {
-      const row = document.createElement('div');
-      row.className = 'match-row';
-      row.innerHTML = `
-        <div class="match-team">
-          <img class="match-team-logo" src="${match.teams.home.logo || 'https://via.placeholder.com/28x28?text=H'}" alt="${match.teams.home.name}">
-          <span class="match-team-name">${match.teams.home.name}</span>
-        </div>
-        <div class="match-score">${match.goals.home ?? ''} <span style="color:#8B92A1;font-weight:400;">-</span> ${match.goals.away ?? ''}</div>
-        <div class="match-team">
-          <img class="match-team-logo" src="${match.teams.away.logo || 'https://via.placeholder.com/28x28?text=A'}" alt="${match.teams.away.name}">
-          <span class="match-team-name">${match.teams.away.name}</span>
-        </div>
-        <div class="match-time">${match.fixture.status.short === 'NS' ? new Date(match.fixture.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : match.fixture.status.short === 'FT' ? 'FT' : (match.fixture.status.elapsed ? match.fixture.status.elapsed + "'" : '')}</div>
-      `;
-      leagueGroup.appendChild(row);
-    });
-    container.appendChild(leagueGroup);
-  });
-}
-
-// Load dates for date navigation
-function loadDates() {
-  const dateList = document.getElementById('date-list');
-  const dates = [];
-  
-  for (let i = -3; i <= 3; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() + i);
-    dates.push({
-      date: date,
-      day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-      dayNum: date.getDate(),
-      isToday: i === 0
-    });
-  }
-  
-  dateList.innerHTML = dates.map(d => `
-    <button class="date-item ${d.isToday ? 'active' : ''}">
-      <span class="day">${d.day}</span>
-      <span class="day-num">${d.dayNum}</span>
+  <!-- Filter Tabs -->
+  <section class="filter-tabs">
+    <button class="tab-btn active" data-filter="all">All Matches</button>
+    <button class="tab-btn" data-filter="live">
+      <span class="live-dot"></span> Live
     </button>
-  `).join('');
-}
+    <button class="tab-btn" data-filter="upcoming">Upcoming</button>
+    <button class="tab-btn" data-filter="finished">Finished</button>
+  </section>
 
-// Load matches grouped by league
-function loadMatches() {
-  const container = document.getElementById('league-groups');
-  container.innerHTML = '';
+  <!-- Live Matches API Section removed -->
 
-  matchData.leagues.forEach(league => {
-    const filteredMatches = league.matches.filter(match => {
-      if (currentFilter === 'all') return true;
-      return match.status === currentFilter;
-    });
-    if (filteredMatches.length === 0) return;
-
-    // FotMob-style league group card
-    const leagueGroup = document.createElement('div');
-    leagueGroup.className = 'league-group-card';
-
-    // League header
-    const leagueHeader = document.createElement('div');
-    leagueHeader.className = 'league-group-header';
-    leagueHeader.innerHTML = `
-      <span class="league-logo">${league.logo}</span>
-      <span>${league.name}${league.country ? ' - ' + league.country : ''}</span>
-    `;
-    leagueGroup.appendChild(leagueHeader);
-
-    // Matches as rows
-    filteredMatches.forEach(match => {
-      const row = document.createElement('div');
-      row.className = 'match-row';
-      row.innerHTML = `
-        <div class="match-team">
-          <img class="match-team-logo" src="${match.homeLogo || 'https://via.placeholder.com/28x28?text=H'}" alt="${match.homeTeam}">
-          <span class="match-team-name">${match.homeTeam}</span>
-        </div>
-        <div class="match-score">${match.homeScore ?? ''} <span style="color:#8B92A1;font-weight:400;">-</span> ${match.awayScore ?? ''}</div>
-        <div class="match-team">
-          <img class="match-team-logo" src="${match.awayLogo || 'https://via.placeholder.com/28x28?text=A'}" alt="${match.awayTeam}">
-          <span class="match-team-name">${match.awayTeam}</span>
-        </div>
-        <div class="match-time">${match.time || match.date ? (match.time || (new Date(match.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}))) : ''}</div>
-      `;
-      leagueGroup.appendChild(row);
-    });
-
-    container.appendChild(leagueGroup);
-  });
-}
-
-// Create individual match card
-function createMatchCard(match) {
-  const card = document.createElement('div');
-  card.className = 'match-card';
-  card.dataset.matchId = match.id;
-
-  // FotMob style: horizontal layout
-  card.innerHTML = `
-    <div class="match-team">
-      <img class="match-team-logo" src="${match.homeLogo || 'https://via.placeholder.com/32x32?text=H'}" alt="${match.homeTeam}">
-      <span class="match-team-name">${match.homeTeam}</span>
+  <!-- Matches Section -->
+  <section id="matches" class="matches-section">
+    <div class="container">
+      <div class="league-groups" id="league-groups">
+        <!-- Leagues and matches dynamically loaded here -->
+      </div>
     </div>
-    <div class="match-score">${match.homeScore ?? ''} <span style="color:#8B92A1;font-weight:400;">-</span> ${match.awayScore ?? ''}</div>
-    <div class="match-team">
-      <img class="match-team-logo" src="${match.awayLogo || 'https://via.placeholder.com/32x32?text=A'}" alt="${match.awayTeam}">
-      <span class="match-team-name">${match.awayTeam}</span>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div class="footer-links">
+        <a href="#about">About</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#terms">Terms</a>
+        <a href="#contact">Contact</a>
+      </div>
+      <p>© 2025 Zonera. All rights reserved.</p>
     </div>
-    <div class="match-status">${match.status === 'NS' ? 'Upcoming' : match.status === 'FT' ? 'Finished' : match.status}</div>
-  `;
-  return card;
-}
+  </footer>
 
-// Filter functionality
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentFilter = btn.dataset.filter;
-    renderApiMatches();
-  });
-});
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  
+  <!-- Firebase Config & App Scripts -->
+  <script src="firebase-config.js"></script>
+  <script src="script.js"></script>
+</body>
 
-// Auto refresh for live matches
-setInterval(() => {
-  matchData.leagues.forEach(league => {
-    league.matches.forEach(match => {
-      if (match.status === 'live') {
-        // Simulate minute progression
-        const currentMinute = parseInt(match.minute);
-        if (!isNaN(currentMinute) && currentMinute < 90) {
-          match.minute = `${currentMinute + 1}'`;
-          
-          // Random score changes (10% chance)
-          if (Math.random() < 0.1) {
-            if (Math.random() < 0.5) {
-              match.homeScore++;
-            } else {
-              match.awayScore++;
-            }
-          }
-        }
-      }
-    });
-  });
-  loadMatches();
-}, 60000); // Update every minute
+<!-- Admin Login Modal -->
+<div id="admin-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <span class="close" id="close-admin-modal">&times;</span>
+    <h2>Admin Login</h2>
+    <form id="admin-login-form">
+      <label for="admin-email">Email:</label>
+      <input type="email" id="admin-email" required>
+      <label for="admin-password">Password:</label>
+      <input type="password" id="admin-password" required>
+      <button type="submit">Login</button>
+    </form>
+    <div id="admin-login-error" style="color:red;display:none;"></div>
+  </div>
+</div>
 
-// Initialize
-window.onload = () => {
-  // ...existing code for news logic...
-  // ...existing code for admin login logic...
+<!-- Admin Panel (hidden by default) -->
+<div id="admin-panel" style="display:none;">
+  <div class="admin-card">
+    <h2>Admin Panel</h2>
+    <form id="news-form">
+      <div class="form-row">
+        <label for="news-title">Title</label>
+        <input type="text" id="news-title" required>
+      </div>
+      <div class="form-row">
+        <label for="news-content">Content</label>
+        <textarea id="news-content" rows="3" required></textarea>
+      </div>
+      <div class="form-row">
+        <label for="news-image">Image</label>
+        <input type="file" id="news-image" accept="image/*">
+      </div>
+      <button type="submit" class="add-news-btn">Add News</button>
+    </form>
+    <div id="news-success" style="color:green;display:none;"></div>
+  </div>
+</div>
 
-  // ...existing code for saving matches to Firestore (if needed)...
-
-
-  // Site Initialization
-  loadDates();
-  fetchApiMatches();
-  setInterval(fetchApiMatches, 60000);
-}
+<!-- News Section (right side) -->
+<section id="news-section" class="news-section">
+  <div class="news-list" id="news-list">
+    <!-- News cards will be loaded here -->
+  </div>
+</section>
+</html>
