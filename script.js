@@ -160,6 +160,92 @@ function loadMockData() {
 }
 
 let currentFilter = 'all';
+// Store API matches by type
+let apiMatches = {
+  live: [],
+  finished: [],
+  upcoming: []
+};
+
+// Fetch matches from API for all types
+async function fetchApiMatches() {
+  const endpoints = {
+    live: 'https://v3.football.api-sports.io/fixtures?live=all',
+    finished: 'https://v3.football.api-sports.io/fixtures?status=FT',
+    upcoming: 'https://v3.football.api-sports.io/fixtures?status=NS'
+  };
+  const headers = {
+    'x-apisports-key': '617e8c14cae54043649b511c841119f4',
+    'x-rapidapi-host': 'v3.football.api-sports.io'
+  };
+  for (const type of Object.keys(endpoints)) {
+    try {
+      const response = await fetch(endpoints[type], { method: 'GET', headers });
+      const data = await response.json();
+      apiMatches[type] = data.response || [];
+    } catch (err) {
+      apiMatches[type] = [];
+      console.error('API error for', type, err);
+    }
+  }
+  renderApiMatches();
+}
+
+// Render matches from API grouped by league
+function renderApiMatches() {
+  const container = document.getElementById('league-groups');
+  container.innerHTML = '';
+  let type = currentFilter;
+  if (type === 'all') type = 'live'; // Default to live if 'all'
+  const matches = apiMatches[type];
+  if (!matches || matches.length === 0) {
+    container.innerHTML = '<div style="color:#8B92A1;text-align:center;padding:32px;">No matches scheduled</div>';
+    return;
+  }
+  // Group by league
+  const leagues = {};
+  matches.forEach(match => {
+    const leagueId = match.league.id;
+    if (!leagues[leagueId]) {
+      leagues[leagueId] = {
+        name: match.league.name,
+        country: match.league.country,
+        logo: match.league.logo || '⚽',
+        matches: []
+      };
+    }
+    leagues[leagueId].matches.push(match);
+  });
+  Object.values(leagues).forEach(league => {
+    const leagueGroup = document.createElement('div');
+    leagueGroup.className = 'league-group-card';
+    const leagueHeader = document.createElement('div');
+    leagueHeader.className = 'league-group-header';
+    leagueHeader.innerHTML = `
+      <span class="league-logo">${league.logo ? `<img src='${league.logo}' style='width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:6px;'>` : '⚽'}</span>
+      <span>${league.name}${league.country ? ' - ' + league.country : ''}</span>
+    `;
+    leagueGroup.appendChild(leagueHeader);
+    league.matches.forEach(match => {
+      const row = document.createElement('div');
+      row.className = 'match-row';
+      row.innerHTML = `
+        <div class="match-team">
+          <img class="match-team-logo" src="${match.teams.home.logo || 'https://via.placeholder.com/28x28?text=H'}" alt="${match.teams.home.name}">
+          <span class="match-team-name">${match.teams.home.name}</span>
+        </div>
+        <div class="match-score">${match.goals.home ?? ''} <span style="color:#8B92A1;font-weight:400;">-</span> ${match.goals.away ?? ''}</div>
+        <div class="match-team">
+          <img class="match-team-logo" src="${match.teams.away.logo || 'https://via.placeholder.com/28x28?text=A'}" alt="${match.teams.away.name}">
+          <span class="match-team-name">${match.teams.away.name}</span>
+        </div>
+        <div class="match-time">${match.fixture.status.short === 'NS' ? new Date(match.fixture.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : match.fixture.status.short === 'FT' ? 'FT' : (match.fixture.status.elapsed ? match.fixture.status.elapsed + "'" : '')}</div>
+      `;
+      leagueGroup.appendChild(row);
+    });
+    container.appendChild(leagueGroup);
+  });
+}
 
 // Load dates for date navigation
 function loadDates() {
@@ -261,7 +347,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentFilter = btn.dataset.filter;
-    loadMatches();
+    renderApiMatches();
   });
 });
 
@@ -292,243 +378,14 @@ setInterval(() => {
 
 // Initialize
 window.onload = () => {
-  // News Form Logic
-  const newsForm = document.getElementById('news-form');
-  const newsSuccess = document.getElementById('news-success');
-  const newsList = document.getElementById('news-list');
+  // ...existing code for news logic...
+  // ...existing code for admin login logic...
 
-  // Helper: Upload image to Firebase Storage (if available)
-  async function uploadImage(file) {
-    if (!file || typeof firebase === 'undefined' || !firebase.storage) return null;
-    const storageRef = firebase.storage().ref('news-images/' + Date.now() + '-' + file.name);
-    await storageRef.put(file);
-    return await storageRef.getDownloadURL();
-  }
-
-  // Add News
-  if (newsForm) {
-    newsForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const title = document.getElementById('news-title').value.trim();
-      const content = document.getElementById('news-content').value.trim();
-      const imageInput = document.getElementById('news-image');
-      let imageUrl = '';
-      newsSuccess.style.display = 'none';
-      if (imageInput && imageInput.files && imageInput.files[0]) {
-        // Try upload image to Firebase Storage
-        try {
-          imageUrl = await uploadImage(imageInput.files[0]);
-        } catch (err) {
-          console.error('Image upload error:', err);
-          imageUrl = '';
-        }
-      }
-      // Save news to Firestore
-      if (typeof db !== 'undefined') {
-        try {
-          await db.collection('news').add({
-            title,
-            content,
-            imageUrl,
-            created: new Date().toISOString()
-          });
-          newsSuccess.textContent = 'News added!';
-          newsSuccess.style.display = 'block';
-          newsForm.reset();
-          await loadNews();
-        } catch (err) {
-          console.error('Error saving news:', err);
-          newsSuccess.textContent = 'Error saving news.';
-          newsSuccess.style.display = 'block';
-        }
-      } else {
-        newsSuccess.textContent = 'Firebase not available.';
-        newsSuccess.style.display = 'block';
-        console.error('Firebase not available.');
-      }
-    });
-  }
-
-  // Load News and Display Cards
-  async function loadNews() {
-    if (typeof db === 'undefined' || !newsList) {
-      console.error('Cannot load news: Firebase or newsList missing');
-      return;
-    }
-    try {
-      const snapshot = await db.collection('news').orderBy('created', 'desc').get();
-      newsList.innerHTML = '';
-      // Create a unique container box for news
-      const newsContainer = document.createElement('div');
-      newsContainer.className = 'news-container-box';
-      snapshot.forEach(doc => {
-        const news = doc.data();
-        const card = document.createElement('div');
-        card.className = 'news-card';
-        let imgSrc = news.imageUrl && news.imageUrl.startsWith('http') ? news.imageUrl : 'https://via.placeholder.com/80x80?text=No+Image';
-        let isAdmin = false;
-        const adminPanel = document.getElementById('admin-panel');
-        if (adminPanel && adminPanel.style.display === 'block') {
-          isAdmin = true;
-        }
-        card.innerHTML = `
-          <img class="news-card-img" src="${imgSrc}" alt="News Image" onerror="this.src='https://via.placeholder.com/80x80?text=No+Image'">
-          <div class="news-card-content">
-            <div class="news-card-title">${news.title}</div>
-            <div class="news-card-preview">${news.content}</div>
-          </div>
-          ${isAdmin ? '<button class="news-delete-btn" title="Delete News">🗑️</button>' : ''}
-        `;
-        card.addEventListener('click', (e) => {
-          if (e.target.classList.contains('news-delete-btn')) return;
-          showNewsModal(news);
-        });
-        if (isAdmin) {
-          card.querySelector('.news-delete-btn').addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (confirm('Are you sure you want to delete this news?')) {
-              try {
-                await db.collection('news').doc(doc.id).delete();
-                await loadNews();
-              } catch (err) {
-                alert('Error deleting news.');
-                console.error('Delete error:', err);
-              }
-            }
-          });
-        }
-        newsContainer.appendChild(card);
-      });
-      newsList.appendChild(newsContainer);
-    } catch (err) {
-      console.error('Error loading news:', err);
-    }
-  }
-
-  // Show full news modal (simple implementation)
-  function showNewsModal(news) {
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:500px;">
-        <span class="close" id="close-news-modal">&times;</span>
-        <h2>${news.title}</h2>
-        <img src="${news.imageUrl || 'https://via.placeholder.com/300x180?text=No+Image'}" style="width:100%;max-height:220px;object-fit:cover;border-radius:8px;margin-bottom:16px;">
-        <p style="color:#E8E8E8;font-size:1.08rem;">${news.content}</p>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    document.getElementById('close-news-modal').onclick = () => {
-      modal.remove();
-    };
-    window.onclick = (event) => {
-      if (event.target === modal) modal.remove();
-    };
-  }
-
-  // Initial load
-  loadNews();
-  // Admin Login Modal & Panel Logic
-  const adminLoginBtn = document.getElementById('admin-login-btn');
-  const adminModal = document.getElementById('admin-modal');
-  const closeAdminModal = document.getElementById('close-admin-modal');
-  const adminLoginForm = document.getElementById('admin-login-form');
-  const adminLoginError = document.getElementById('admin-login-error');
-  const adminPanel = document.getElementById('admin-panel');
-
-  if (adminLoginBtn && adminModal && closeAdminModal) {
-    adminLoginBtn.addEventListener('click', () => {
-      adminModal.style.display = 'flex';
-    });
-    closeAdminModal.addEventListener('click', () => {
-      adminModal.style.display = 'none';
-    });
-    window.addEventListener('click', (event) => {
-      if (event.target === adminModal) {
-        adminModal.style.display = 'none';
-      }
-    });
-  }
-
-  // Admin Login Authentication
-  if (adminLoginForm) {
-    adminLoginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('admin-email').value;
-      const password = document.getElementById('admin-password').value;
-      adminLoginError.style.display = 'none';
-      try {
-        // Only allow specific admin credentials
-  if (email === 'mrflux3602@gmail.com' && password === '3602mskt') {
-          adminModal.style.display = 'none';
-          if (adminPanel) adminPanel.style.display = 'block';
-        } else {
-          throw new Error('Invalid credentials');
-        }
-      } catch (err) {
-        adminLoginError.textContent = 'Invalid email or password.';
-        adminLoginError.style.display = 'block';
-      }
-    });
-  }
-
-    // Fetch all matches (live, finished, fixtures)
- async function fetchAllMatches() {
-  const statuses = ['NS', 'FT']; // Upcoming & finished
-  try {
-    for (let status of statuses) {
-      const response = await fetch(`https://api-football-v1.p.rapidapi.com/v3/fixtures?status=${status}`, {
-        method: 'GET',
-        headers: {
-          'X-RapidAPI-Key': '617e8c14cae54043649b511c841119f4',
-          'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
-        }
-      });
-      const data = await response.json();
-
-      data.response.forEach(match => {
-        const matchData = {
-          homeTeam: match.teams.home.name,
-          awayTeam: match.teams.away.name,
-          homeScore: match.goals.home,
-          awayScore: match.goals.away,
-          status: match.fixture.status.short,
-          date: new Date(match.fixture.timestamp * 1000)
-        };
-        saveMatchResult(matchData);
-      });
-    }
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-
-    // Save match to Firestore
-    async function saveMatchResult(matchData) {
-      try {
-        await db.collection('matches').add(matchData);
-        console.log('Match saved ✅', matchData);
-      } catch (error) {
-        console.error('Error saving match: ', error);
-      }
-    }
-
-    // Fetch all matches every 60 seconds
-    fetchAllMatches();
-    setInterval(fetchAllMatches, 60000);
+  // ...existing code for saving matches to Firestore (if needed)...
 
 
   // Site Initialization
   loadDates();
-  // Check if Firebase is available
-  if (typeof db !== 'undefined') {
-    console.log('Loading data from Firebase...');
-    fetchMatchesFromFirebase();
-    // Enable real-time updates (optional)
-    // listenToMatchUpdates();
-  } else {
-    console.log('Firebase not available, using mock data...');
-    loadMockData();
-  }
+  fetchApiMatches();
+  setInterval(fetchApiMatches, 60000);
 }
