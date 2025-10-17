@@ -613,56 +613,50 @@ window.onload = () => {
       }
     });
   }
-    import { db, collection, addDoc } from './firebase-config.js';
 
-    async function fetchLiveMatches() {
-  const response = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?live=all', {
-    method: 'GET',
-    headers: {
-      'X-RapidAPI-Key': '617e8c14cae54043649b511c841119f4',
-      'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
+    // Fetch all matches (live, finished, fixtures)
+    async function fetchAllMatches() {
+      const url = 'https://api-football-v1.p.rapidapi.com/v3/fixtures?season=2025&league=your_league_id';
+      // Replace 'your_league_id' with the actual league ID you want, or remove for all
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'X-RapidAPI-Key': '617e8c14cae54043649b511c841119f4',
+            'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
+          }
+        });
+        const data = await response.json();
+        data.response.forEach(match => {
+          const matchData = {
+            homeTeam: match.teams.home.name,
+            awayTeam: match.teams.away.name,
+            homeScore: match.goals.home,
+            awayScore: match.goals.away,
+            status: match.fixture.status.short, // FT, NS, 1H, 2H, etc.
+            minute: match.fixture.status.elapsed || '',
+            date: new Date(match.fixture.timestamp * 1000)
+          };
+          saveMatchResult(matchData);
+        });
+      } catch (error) {
+        console.error('Error fetching all matches:', error);
+      }
     }
-  });
-  const data = await response.json();
-  
-  data.response.forEach(match => {
-    const matchData = {
-      homeTeam: match.teams.home.name,
-      awayTeam: match.teams.away.name,
-      homeScore: match.goals.home,
-      awayScore: match.goals.away,
-      status: match.fixture.status.elapsed,
-      date: new Date(match.fixture.timestamp * 1000)
-    };
-    saveMatchResult(matchData);
-  });
-}
 
-// Fetch every 60 seconds
-setInterval(fetchLiveMatches, 60000);
+    // Save match to Firestore
+    async function saveMatchResult(matchData) {
+      try {
+        await db.collection('matches').add(matchData);
+        console.log('Match saved ✅', matchData);
+      } catch (error) {
+        console.error('Error saving match: ', error);
+      }
+    }
 
-
-// Example: function to store a live match
-async function saveMatchResult(matchData) {
-  try {
-    await addDoc(collection(db, "liveMatches"), matchData);
-    console.log("Match saved ✅", matchData);
-  } catch (error) {
-    console.error("Error saving match: ", error);
-  }
-}
-
-// Example usage:
-const match = {
-  homeTeam: "India",
-  awayTeam: "Singapore",
-  homeScore: 2,
-  awayScore: 1,
-  status: "45'",  // current minute
-  date: new Date()
-};
-
-saveMatchResult(match);
+    // Fetch all matches every 60 seconds
+    fetchAllMatches();
+    setInterval(fetchAllMatches, 60000);
 
 
   // Site Initialization
