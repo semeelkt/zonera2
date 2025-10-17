@@ -1,399 +1,266 @@
-/* script.js — Unified match loader + renderer for Zonera / Wuroud
-   - Expects firebase-config.js to run earlier and expose `db` (Firestore)
-   - Fetches: Firebase matches, API-Football (api-sports), Football-Data.org
-   - Renders live matches into #live-matches and leagues into #league-groups
-   - Date filtering + status tabs + auto-refresh
-*/
+// ===================== ZONERA LIVE MATCH SYSTEM =====================
 
-/////////////////////// CONFIG ///////////////////////
-const API_SPORTS_KEY = '617e8c14cae54043649b511c841119f4'; // replace with your key or load from server
-const FOOTBALL_DATA_KEY = 'fd81f1998248477eb823f962a071cf6e'; // replace if needed
-const API_SPORTS_HEADERS = {
-  'x-apisports-key': API_SPORTS_KEY,
-  'x-rapidapi-host': 'v3.football.api-sports.io'
-};
-const AUTO_REFRESH_MS = 60_000; // 60s
+// --- Firebase must be initialized before this script ---
+let matchData = { leagues: [] };
+let currentFilter = 'all';
+let dateOffset = 0;
+let selectedDateIndex = 3;
 
-/////////////////////// STATE ///////////////////////
-let matchData = { leagues: [] }; // from Firebase / mock
+// Multi-source match data
 let apiMatches = { live: [], finished: [], upcoming: [] };
 let footballDataMatches = [];
-let currentFilter = 'all'; // all | live | upcoming | finished
-let dateOffset = 0;
-let selectedDateIndex = 3; // 0..6 where 3 is 'today' in the 7-day window
 
-/////////////////////// HELPERS ///////////////////////
-function safeNowLocalISO() {
-  return new Date().toISOString();
-}
-
-function startOfLocalDayISO(date) {
-  const d = date ? new Date(date) : new Date();
-  d.setHours(0,0,0,0);
-  return d.toISOString();
-}
-
-function isSameLocalDay(dateAISO, dateBISO) {
-  if (!dateAISO || !dateBISO) return false;
-  const a = new Date(dateAISO);
-  const b = new Date(dateBISO);
-  return a.getFullYear() === b.getFullYear() &&
-         a.getMonth() === b.getMonth() &&
-         a.getDate() === b.getDate();
-}
-
-function formatTimeShort(iso) {
-  try {
-    return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-  } catch(e) {
-    return '';
-  }
-}
-
-function safeGetDb() {
-  if (typeof db === 'undefined') {
-    console.warn('Firestore `db` is not defined. Make sure firebase-config.js runs before script.js');
-    return null;
-  }
-  return db;
-}
-
-/////////////////////// FIREBASE FETCH ///////////////////////
+// ===================== FETCH FIREBASE MATCHES =====================
 async function fetchMatchesFromFirebase() {
-  const firestore = safeGetDb();
-  if (!firestore) return; // nothing to fetch
   try {
-    const matchesSnapshot = await firestore.collection('matches').get();
-    const leaguesSnapshot = await firestore.collection('leagues').get();
+    console.log('Fetching matches from Firebase...');
+    const matchesSnapshot = await db.collection('matches').get();
+    const leaguesSnapshot = await db.collection('leagues').get();
+
     const leaguesMap = {};
     leaguesSnapshot.forEach(doc => {
-      const data = doc.data();
-      leaguesMap[doc.id] = { id: doc.id, name: data.name || 'Unknown', country: data.country || '', logo: data.logo || null, matches: [] };
+      const leagueData = doc.data();
+      leaguesMap[doc.id] = {
+        id: doc.id,
+        name: leagueData.name,
+        country: leagueData.country,
+        logo: leagueData.logo || '⚽',
+        matches: []
+      };
     });
+
     matchesSnapshot.forEach(doc => {
-      const m = { id: doc.id, ...doc.data() };
-      const leagueId = m.leagueId || 'other';
-      if (!leaguesMap[leagueId]) {
-        leaguesMap[leagueId] = { id: leagueId, name: m.leagueName || 'Other', country: '', logo: null, matches: [] };
-      }
-      leaguesMap[leagueId].matches.push(m);
+      const match = { id: doc.id, ...doc.data() };
+      const leagueId = match.leagueId || 'other';
+      if (leaguesMap[leagueId]) leaguesMap[leagueId].matches.push(match);
     });
-    matchData.leagues = Object.values(leaguesMap).filter(l => l.matches && l.matches.length > 0);
-    // console.log('Firebase matches loaded', matchData);
-  } catch (err) {
-    console.error('Error fetching Firebase matches:', err);
-    loadMockData();
+
+    matchData.leagues = Object.values(leaguesMap).filter(l => l.matches.length > 0);
+    renderAllMatches();
+  } catch (error) {
+    console.error('Error fetching Firebase data:', error);
   }
 }
 
+// --- Real-time updates ---
 function listenToMatchUpdates() {
-  const firestore = safeGetDb();
-  if (!firestore) return;
-  // If you prefer real-time, uncomment this. (Note: real-time listeners cost reads)
-  try {
-    firestore.collection('matches').onSnapshot(snapshot => {
-      console.info('Firebase snapshot changed, reloading matches...');
-      fetchMatchesFromFirebase().then(renderAll);
-    });
-  } catch (e) {
-    console.warn('Realtime listener not enabled or failed:', e);
-  }
+  db.collection('matches').onSnapshot(() => {
+    console.log('Firebase matches updated');
+    fetchMatchesFromFirebase();
+  });
 }
 
-function loadMockData() {
-  console.info('Loading mock data as a fallback.');
-  matchData = {
-    leagues: [
-      {
-        id: 'mock-pl',
-        name: 'Premier League',
-        country: 'England',
-        logo: '🏴',
-        matches: [
-          { id: 'm1', homeTeam: 'Man City', awayTeam: 'Arsenal', homeScore: 2, awayScore: 2, status: 'live', utcDate: new Date().toISOString() },
-          { id: 'm2', homeTeam: 'Liverpool', awayTeam: 'Chelsea', homeScore: 1, awayScore: 0, status: 'finished', utcDate: new Date(Date.now() - 86400e3).toISOString() },
-          { id: 'm3', homeTeam: 'Man Utd', awayTeam: 'Spurs', homeScore: null, awayScore: null, status: 'upcoming', utcDate: new Date(Date.now() + 86400e3).toISOString() }
-        ]
-      }
-    ]
-  };
-}
-
-/////////////////////// API-SPORTS (api-football) ///////////////////////
-async function fetchApiSports() {
+// ===================== FETCH API-FOOTBALL MATCHES =====================
+const API_KEY = '617e8c14cae54043649b511c841119f4';
+async function fetchApiMatches() {
   const endpoints = {
     live: 'https://v3.football.api-sports.io/fixtures?live=all',
     finished: 'https://v3.football.api-sports.io/fixtures?status=FT',
     upcoming: 'https://v3.football.api-sports.io/fixtures?status=NS'
   };
-  try {
-    for (const type of Object.keys(endpoints)) {
-      const res = await fetch(endpoints[type], { headers: API_SPORTS_HEADERS });
-      const json = await res.json();
-      apiMatches[type] = (json && json.response) ? json.response : [];
+  const headers = { 'x-apisports-key': API_KEY };
+
+  for (const type in endpoints) {
+    try {
+      const res = await fetch(endpoints[type], { headers });
+      const data = await res.json();
+      apiMatches[type] = data.response || [];
+    } catch (err) {
+      console.error(`Error fetching ${type} matches:`, err);
     }
-    // console.log('apiMatches updated', apiMatches);
-  } catch (e) {
-    console.error('API-Sports fetch error:', e);
-    // keep previous values or empty
   }
 }
 
-/////////////////////// FOOTBALL-DATA.ORG ///////////////////////
-async function fetchFootballDataOrg() {
+// ===================== FETCH FOOTBALL-DATA.ORG =====================
+const FOOTBALL_DATA_KEY = 'fd81f1998248477eb823f962a071cf6e';
+async function fetchMatchesFromFootballData() {
   try {
-    const res = await fetch('https://api.football-data.org/v4/matches', { headers: { 'X-Auth-Token': FOOTBALL_DATA_KEY } });
-    const json = await res.json();
-    footballDataMatches = json && json.matches ? json.matches : [];
-  } catch (e) {
-    console.error('Football-Data fetch error:', e);
+    const response = await fetch('https://api.football-data.org/v4/matches', {
+      headers: { 'X-Auth-Token': FOOTBALL_DATA_KEY }
+    });
+    const data = await response.json();
+    footballDataMatches = data.matches || [];
+  } catch (err) {
+    console.error('Football-Data.org fetch failed:', err);
   }
 }
 
-function normalizeFD(match) {
-  return {
-    homeTeam: match.homeTeam?.name || 'TBD',
-    awayTeam: match.awayTeam?.name || 'TBD',
-    homeScore: match.score?.fullTime?.home ?? null,
-    awayScore: match.score?.fullTime?.away ?? null,
-    status: match.status === 'IN_PLAY' ? 'live' : match.status === 'SCHEDULED' ? 'upcoming' : 'finished',
-    utcDate: match.utcDate,
-    league: {
-      id: match.competition?.id ?? (match.competition?.name || 'fd'),
-      name: match.competition?.name || 'League',
-      country: match.competition?.area?.name || '',
-      logo: null
-    }
-  };
-}
-
-/////////////////////// MERGE + NORMALIZE ///////////////////////
-function normalizeApiSportsFixture(f) {
-  // f is per api-sports structure
-  return {
-    homeTeam: f.teams?.home?.name ?? 'TBD',
-    awayTeam: f.teams?.away?.name ?? 'TBD',
-    homeScore: f.goals?.home ?? null,
-    awayScore: f.goals?.away ?? null,
-    status: (() => {
-      const s = f.fixture?.status?.short ?? '';
-      if (s === 'NS') return 'upcoming';
-      if (s === 'FT') return 'finished';
-      if (s === '1H' || s === '2H' || s === 'LIVE' || s === 'HT' || s === 'ET' || s === 'P') return 'live';
-      return 'upcoming';
-    })(),
-    utcDate: f.fixture?.date || (f.fixture?.timestamp ? new Date(f.fixture.timestamp * 1000).toISOString() : null),
-    league: {
-      id: f.league?.id ?? 'api-sports',
-      name: f.league?.name ?? 'League',
-      country: f.league?.country ?? '',
-      logo: f.league?.logo ?? null
-    }
-  };
-}
-
-function getAllMatchesForRender() {
+// ===================== MERGE ALL MATCHES =====================
+function getAllMatches() {
   const merged = [];
 
-  // 1) Firebase matches
+  // Firebase
   matchData.leagues.forEach(league => {
     league.matches.forEach(m => {
       merged.push({
-        homeTeam: m.homeTeam || m.home || m.home_name || 'TBD',
-        awayTeam: m.awayTeam || m.away || m.away_name || 'TBD',
-        homeScore: (typeof m.homeScore !== 'undefined') ? m.homeScore : (m.home_score ?? null),
-        awayScore: (typeof m.awayScore !== 'undefined') ? m.awayScore : (m.away_score ?? null),
-        status: m.status || 'upcoming',
-        utcDate: m.utcDate || m.time || m.date || new Date().toISOString(),
-        league: { id: league.id || league.name, name: league.name || 'League', country: league.country || '', logo: league.logo || null },
-        source: 'firebase',
-        raw: m
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        status: m.status,
+        time: m.time,
+        league: league
       });
     });
   });
 
-  // 2) API-Sports
-  ['live', 'finished', 'upcoming'].forEach(type => {
-    apiMatches[type].forEach(f => merged.push({ ...normalizeApiSportsFixture(f), source: 'api-sports' }));
-  });
-
-  // 3) Football-Data.org
-  footballDataMatches.forEach(fd => merged.push({ ...normalizeFD(fd), source: 'football-data' }));
-
-  // 4) Optionally dedupe by combination home-away-date
-  // For simplicity, just return merged and let UI group by league
-
-  // 5) Apply status filter
-  let filtered = merged;
-  if (currentFilter !== 'all') filtered = filtered.filter(m => m.status === currentFilter);
-
-  // 6) Apply date filter (use selected date from date-list)
-  const dateListButtons = Array.from(document.querySelectorAll('#date-list .date-item'));
-  const selBtn = dateListButtons[selectedDateIndex];
-  if (selBtn) {
-    const selectedISO = selBtn.dataset.date; // start-of-day ISO
-    filtered = filtered.filter(m => {
-      if (!m.utcDate) return false;
-      return isSameLocalDay(m.utcDate, selectedISO);
+  // API-Football
+  for (const type in apiMatches) {
+    apiMatches[type].forEach(m => {
+      merged.push({
+        homeTeam: m.teams.home.name,
+        awayTeam: m.teams.away.name,
+        homeScore: m.goals.home,
+        awayScore: m.goals.away,
+        status: m.fixture.status.short === 'FT' ? 'finished' : m.fixture.status.short === 'NS' ? 'upcoming' : 'live',
+        time: new Date(m.fixture.timestamp * 1000).toISOString(),
+        league: {
+          id: m.league.id,
+          name: m.league.name,
+          country: m.league.country,
+          logo: m.league.logo
+        }
+      });
     });
   }
 
-  return filtered;
-}
-
-/////////////////////// RENDERERS ///////////////////////
-function renderLiveMatches(matches) {
-  const container = document.getElementById('live-matches');
-  if (!container) return;
-  // Only keep 'live' matches here
-  const live = matches.filter(m => m.status === 'live');
-  if (live.length === 0) {
-    container.innerHTML = `<div style="color:#8B92A1;text-align:center;padding:16px;">No live matches</div>`;
-    return;
-  }
-
-  // Build HTML using DocumentFragment to reduce reflow
-  const frag = document.createDocumentFragment();
-  live.forEach(m => {
-    const card = document.createElement('div');
-    card.className = 'live-match-card';
-    card.innerHTML = `
-      <div class="live-match-logo">${m.league.logo ? `<img src="${m.league.logo}" style="width:48px;height:48px;border-radius:50%;">` : '⚽'}</div>
-      <div class="live-match-info">
-        <div class="live-match-teams">${escapeHtml(m.homeTeam)} vs ${escapeHtml(m.awayTeam)}</div>
-        <div class="live-match-score">${m.homeScore ?? '-'}  -  ${m.awayScore ?? '-'}</div>
-        <div class="live-match-status">LIVE • ${formatTimeShort(m.utcDate)}</div>
-      </div>
-    `;
-    frag.appendChild(card);
+  // Football-Data.org
+  footballDataMatches.forEach(m => {
+    merged.push({
+      homeTeam: m.homeTeam.name,
+      awayTeam: m.awayTeam.name,
+      homeScore: m.score.fullTime.home,
+      awayScore: m.score.fullTime.away,
+      status: m.status === 'IN_PLAY' ? 'live' : m.status === 'SCHEDULED' ? 'upcoming' : 'finished',
+      time: m.utcDate,
+      league: {
+        id: m.competition.id,
+        name: m.competition.name,
+        country: m.competition.area.name
+      }
+    });
   });
-  // Replace content smoothly
-  container.innerHTML = '';
-  container.appendChild(frag);
+
+  // Apply current filter
+  return currentFilter === 'all' ? merged : merged.filter(m => m.status === currentFilter);
 }
 
-function escapeHtml(text) {
-  if (!text) return '';
-  return String(text).replace(/[&<>"'`]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'})[s]);
-}
-
-function renderLeagues(matches) {
+// ===================== RENDER MATCHES =====================
+function renderAllMatches() {
   const container = document.getElementById('league-groups');
-  if (!container) return;
-  if (matches.length === 0) {
-    container.innerHTML = `<div style="color:#8B92A1;text-align:center;padding:32px;">No matches for selected date / filter</div>`;
+  const liveContainer = document.getElementById('live-matches');
+  container.innerHTML = '';
+  liveContainer.innerHTML = '';
+
+  const all = getAllMatches();
+  if (!all.length) {
+    container.innerHTML = `<div class="no-data">No matches found</div>`;
     return;
   }
-  // Group by league.id or league.name
+
+  // Group by league
   const leagues = {};
-  matches.forEach(m => {
-    const lid = m.league?.id ?? (m.league?.name || 'unknown');
-    if (!leagues[lid]) leagues[lid] = { name: m.league?.name || 'League', country: m.league?.country || '', logo: m.league?.logo || null, matches: [] };
+  all.forEach(m => {
+    const lid = m.league.name;
+    if (!leagues[lid]) leagues[lid] = { ...m.league, matches: [] };
     leagues[lid].matches.push(m);
   });
 
-  const frag = document.createDocumentFragment();
-  Object.values(leagues).forEach(l => {
-    const group = document.createElement('div');
-    group.className = 'league-group-card';
-    // header
-    const header = document.createElement('div');
-    header.className = 'league-group-header';
-    header.innerHTML = `
-      <span class="league-logo">${l.logo ? `<img src="${l.logo}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:6px;">` : '⚽'}</span>
-      <span>${escapeHtml(l.name)}${l.country ? ' - ' + escapeHtml(l.country) : ''}</span>
+  Object.values(leagues).forEach(league => {
+    const leagueCard = document.createElement('div');
+    leagueCard.className = 'league-card';
+    leagueCard.innerHTML = `
+      <div class="league-header">
+        <img src="${league.logo || 'https://img.icons8.com/emoji/48/soccer-ball.png'}" alt="logo" class="league-logo">
+        <h3>${league.name} <span>${league.country || ''}</span></h3>
+      </div>
     `;
-    group.appendChild(header);
 
-    // matches rows
-    l.matches.forEach(m => {
-      const row = document.createElement('div');
-      row.className = 'match-row' + (m.status === 'live' ? ' live' : (m.status === 'finished' ? ' finished' : ' upcoming'));
-      row.innerHTML = `
-        <div class="match-team">
-          <span class="match-team-name">${escapeHtml(m.homeTeam)}</span>
+    league.matches.forEach(match => {
+      const matchRow = document.createElement('div');
+      matchRow.className = `match-row ${match.status}`;
+      matchRow.innerHTML = `
+        <div class="teams">
+          <span>${match.homeTeam}</span>
+          <span>${match.awayTeam}</span>
         </div>
-        <div class="match-score">${m.homeScore ?? ''} <span class="score-sep">-</span> ${m.awayScore ?? ''}</div>
-        <div class="match-team">
-          <span class="match-team-name">${escapeHtml(m.awayTeam)}</span>
+        <div class="score">
+          ${match.homeScore ?? '-'} : ${match.awayScore ?? '-'}
         </div>
-        <div class="match-time">${formatTimeShort(m.utcDate)}</div>
+        <div class="status">
+          ${match.status === 'live' ? "<span class='live-indicator'>LIVE</span>" : match.status === 'finished' ? 'FT' : '•'}
+        </div>
       `;
-      frag.appendChild(row);
-      group.appendChild(row);
+      leagueCard.appendChild(matchRow);
+
+      if (match.status === 'live') {
+        const liveCard = matchRow.cloneNode(true);
+        liveContainer.appendChild(liveCard);
+      }
     });
 
-    frag.appendChild(group);
+    container.appendChild(leagueCard);
   });
-
-  container.innerHTML = '';
-  container.appendChild(frag);
 }
 
-function renderAll() {
-  const all = getAllMatchesForRender();
-  renderLiveMatches(all);
-  renderLeagues(all);
-}
-
-/////////////////////// DATE NAV ///////////////////////
+// ===================== DATE NAVIGATION =====================
 function loadDates() {
   const dateList = document.getElementById('date-list');
-  if (!dateList) return;
   const dates = [];
+
   for (let i = -3; i <= 3; i++) {
     const d = new Date();
     d.setDate(d.getDate() + dateOffset + i);
-    dates.push({ isoStart: startOfLocalDayISO(d), weekday: d.toLocaleDateString('en-US', { weekday: 'short' }), dayNum: d.getDate() });
+    dates.push({
+      date: d,
+      label: d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
+    });
   }
-  dateList.innerHTML = dates.map((d, idx) => `
-    <button class="date-item${idx === selectedDateIndex ? ' active' : ''}" data-date="${d.isoStart}">
-      <span class="day">${d.weekday}</span>
-      <span class="day-num">${d.dayNum}</span>
-    </button>
-  `).join('');
 
-  Array.from(dateList.children).forEach((btn, idx) => {
+  dateList.innerHTML = dates.map((d, idx) =>
+    `<button class="date-item ${idx === selectedDateIndex ? 'active' : ''}" data-date="${d.date.toISOString()}">${d.label}</button>`
+  ).join('');
+
+  document.querySelectorAll('.date-item').forEach((btn, idx) => {
     btn.addEventListener('click', () => {
       selectedDateIndex = idx;
       loadDates();
-      renderAll();
     });
   });
 }
 
-/////////////////////// TABS ///////////////////////
-function initTabs() {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter;
-      renderAll();
-    });
+// ===================== FILTER BUTTONS =====================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderAllMatches();
   });
-}
-
-/////////////////////// INIT + AUTO-REFRESH ///////////////////////
-async function initialLoad() {
-  loadDates();
-  initTabs();
-  // Fetch everything in parallel and render
-  await Promise.allSettled([ fetchMatchesFromFirebase(), fetchApiSports(), fetchFootballDataOrg() ]);
-  renderAll();
-  listenToMatchUpdates();
-
-  // prev / next date controls
-  document.querySelector('.date-btn.prev')?.addEventListener('click', () => { dateOffset--; loadDates(); renderAll(); });
-  document.querySelector('.date-btn.next')?.addEventListener('click', () => { dateOffset++; loadDates(); renderAll(); });
-
-  // auto refresh loop
-  setInterval(async () => {
-    await Promise.allSettled([ fetchApiSports(), fetchFootballDataOrg(), fetchMatchesFromFirebase() ]);
-    renderAll();
-  }, AUTO_REFRESH_MS);
-}
-
-window.addEventListener('load', () => {
-  initialLoad().catch(err => console.error('initialLoad failed', err));
 });
+
+// ===================== AUTO REFRESH =====================
+setInterval(async () => {
+  await fetchApiMatches();
+  await fetchMatchesFromFootballData();
+  renderAllMatches();
+}, 60000);
+
+// ===================== INITIALIZE =====================
+window.onload = async () => {
+  loadDates();
+  listenToMatchUpdates();
+  await fetchMatchesFromFirebase();
+  await fetchApiMatches();
+  await fetchMatchesFromFootballData();
+  renderAllMatches();
+
+  document.querySelector('.date-btn.prev').addEventListener('click', () => {
+    dateOffset--;
+    loadDates();
+  });
+  document.querySelector('.date-btn.next').addEventListener('click', () => {
+    dateOffset++;
+    loadDates();
+  });
+};
