@@ -1158,3 +1158,48 @@ footer p {
     width: 100%;
   }
 }
+/* ---------- Live matches (polish) ---------- */
+#live {
+  margin: 32px auto 12px auto;
+  max-width: 980px;
+}
+#live h2 { color: #fff; display:flex; align-items:center; justify-content:center; gap:10px; font-size:1.6rem; }
+#live-matches { padding:12px; border-radius:12px; background: linear-gradient(180deg,#0f1419, #0b0f13); box-shadow: 0 6px 30px rgba(0,0,0,0.45); min-height:70px; }
+
+/* Live match card */
+.live-match-card {
+  display:flex;
+  gap:14px;
+  align-items:center;
+  padding:12px;
+  border-radius:12px;
+  background: linear-gradient(90deg, rgba(0,210,102,0.04), rgba(0,0,0,0));
+  margin-bottom:12px;
+  box-shadow: 0 6px 18px rgba(0,210,102,0.06);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.live-match-card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(0,210,102,0.08); }
+.live-match-logo { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; background:#0f1419; border:1px solid rgba(255,255,255,0.03); }
+.live-match-info { flex:1; min-width:0; }
+.live-match-teams { color:#00D266; font-weight:800; font-size:1rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.live-match-score { font-size:1.4rem; color:#fff; font-weight:900; text-shadow:0 4px 18px rgba(0,210,102,0.08); margin-top:6px; }
+.live-match-status { margin-top:6px; display:inline-block; background:rgba(0,153,255,0.08); color:#0099ff; padding:6px 10px; border-radius:14px; font-weight:700; font-size:0.85rem; }
+
+/* ---------- League group / matches ---------- */
+.league-group-card { margin: 12px 0; border-radius:12px; background: linear-gradient(180deg,#0d1114,#0a0e12); padding:8px; border:1px solid rgba(255,255,255,0.02); }
+.league-group-header { padding:10px 12px; display:flex; gap:10px; align-items:center; color:#E8E8E8; font-weight:800; font-size:0.98rem; border-bottom:1px solid rgba(255,255,255,0.02); }
+.match-row { display:flex; align-items:center; gap:14px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.02); justify-content:space-between; }
+.match-row.live { background: linear-gradient(90deg, rgba(255,62,62,0.04), rgba(0,0,0,0)); border-left:3px solid rgba(255,62,62,0.18); }
+.match-row.finished { opacity:0.8; }
+.match-team { flex:1; display:flex; align-items:center; gap:10px; min-width:0; }
+.match-team-name { color:#E8E8E8; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.match-score { min-width:70px; text-align:center; font-weight:900; font-size:1rem; color:#fff; }
+.match-time { min-width:64px; text-align:right; color:#8B92A1; font-weight:700; }
+
+/* small screen tweaks */
+@media (max-width: 768px) {
+  .live-match-teams { font-size:0.95rem; }
+  .live-match-score { font-size:1.15rem; }
+  .league-group-card { margin:10px; }
+  .match-score { min-width:54px; }
+}
