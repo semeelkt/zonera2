@@ -189,52 +189,47 @@ function loadDates() {
 function loadMatches() {
   const container = document.getElementById('league-groups');
   container.innerHTML = '';
-  
+
   matchData.leagues.forEach(league => {
     const filteredMatches = league.matches.filter(match => {
       if (currentFilter === 'all') return true;
       return match.status === currentFilter;
     });
-    
     if (filteredMatches.length === 0) return;
-    
-    const leagueSection = document.createElement('div');
-    leagueSection.className = 'league-section';
-    
+
+    // FotMob-style league group card
+    const leagueGroup = document.createElement('div');
+    leagueGroup.className = 'league-group-card';
+
+    // League header
     const leagueHeader = document.createElement('div');
-    leagueHeader.className = 'league-header';
+    leagueHeader.className = 'league-group-header';
     leagueHeader.innerHTML = `
-      <div class="league-info">
-        <span class="league-logo">${league.logo}</span>
-        <div>
-          <h3>${league.name}</h3>
-          <p>${league.country}</p>
-        </div>
-      </div>
-      <button class="expand-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
+      <span class="league-logo">${league.logo}</span>
+      <span>${league.name}${league.country ? ' - ' + league.country : ''}</span>
     `;
-    
-    const matchList = document.createElement('div');
-    matchList.className = 'match-list';
-    
-    filteredMatches.forEach((match, index) => {
-      const matchCard = createMatchCard(match);
-      matchList.appendChild(matchCard);
-      
-      // Animate
-      setTimeout(() => {
-        matchCard.style.opacity = '1';
-        matchCard.style.transform = 'translateY(0)';
-      }, index * 50);
+    leagueGroup.appendChild(leagueHeader);
+
+    // Matches as rows
+    filteredMatches.forEach(match => {
+      const row = document.createElement('div');
+      row.className = 'match-row';
+      row.innerHTML = `
+        <div class="match-team">
+          <img class="match-team-logo" src="${match.homeLogo || 'https://via.placeholder.com/28x28?text=H'}" alt="${match.homeTeam}">
+          <span class="match-team-name">${match.homeTeam}</span>
+        </div>
+        <div class="match-score">${match.homeScore ?? ''} <span style="color:#8B92A1;font-weight:400;">-</span> ${match.awayScore ?? ''}</div>
+        <div class="match-team">
+          <img class="match-team-logo" src="${match.awayLogo || 'https://via.placeholder.com/28x28?text=A'}" alt="${match.awayTeam}">
+          <span class="match-team-name">${match.awayTeam}</span>
+        </div>
+        <div class="match-time">${match.time || match.date ? (match.time || (new Date(match.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}))) : ''}</div>
+      `;
+      leagueGroup.appendChild(row);
     });
-    
-    leagueSection.appendChild(leagueHeader);
-    leagueSection.appendChild(matchList);
-    container.appendChild(leagueSection);
+
+    container.appendChild(leagueGroup);
   });
 }
 
