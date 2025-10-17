@@ -504,6 +504,9 @@ window.onload = () => {
     try {
       const snapshot = await db.collection('news').orderBy('created', 'desc').get();
       newsList.innerHTML = '';
+      // Create a unique container box for news
+      const newsContainer = document.createElement('div');
+      newsContainer.className = 'news-container-box';
       snapshot.forEach(doc => {
         const news = doc.data();
         const card = document.createElement('div');
@@ -514,13 +517,29 @@ window.onload = () => {
             <div class="news-card-title">${news.title}</div>
             <div class="news-card-preview">${news.content}</div>
           </div>
+          <button class="news-delete-btn" title="Delete News">🗑️</button>
         `;
-        card.addEventListener('click', () => {
-          // Open full news page (simple modal for now)
+        card.addEventListener('click', (e) => {
+          // Prevent modal if clicking delete button
+          if (e.target.classList.contains('news-delete-btn')) return;
           showNewsModal(news);
         });
-        newsList.appendChild(card);
+        // Delete button handler
+        card.querySelector('.news-delete-btn').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm('Are you sure you want to delete this news?')) {
+            try {
+              await db.collection('news').doc(doc.id).delete();
+              await loadNews();
+            } catch (err) {
+              alert('Error deleting news.');
+              console.error('Delete error:', err);
+            }
+          }
+        });
+        newsContainer.appendChild(card);
       });
+      newsList.appendChild(newsContainer);
     } catch (err) {
       console.error('Error loading news:', err);
     }
