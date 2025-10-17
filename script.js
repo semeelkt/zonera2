@@ -469,7 +469,7 @@ window.onload = () => {
       adminLoginError.style.display = 'none';
       try {
         // Only allow specific admin credentials
-        if (email === 'mrflux3602' && password === '3602mskt') {
+  if (email === 'mrflux3602@gmail.com' && password === '3602mskt') {
           adminModal.style.display = 'none';
           if (adminPanel) adminPanel.style.display = 'block';
         } else {
