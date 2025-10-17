@@ -241,163 +241,22 @@ function loadMatches() {
 // Create individual match card
 function createMatchCard(match) {
   const card = document.createElement('div');
-  card.className = `match-card ${match.status}`;
+  card.className = 'match-card';
   card.dataset.matchId = match.id;
-  
-  const scoreDisplay = match.status === 'upcoming' 
-    ? `<div class="match-time">${match.time}</div>`
-    : `
-      <div class="match-score">
-        <span class="score-home">${match.homeScore}</span>
-        <span class="score-separator">-</span>
-        <span class="score-away">${match.awayScore}</span>
-      </div>
-    `;
-  
-  const statusBadge = match.status === 'live' 
-    ? `<span class="status-badge live-badge"><span class="live-pulse"></span>${match.minute}</span>`
-    : match.status === 'finished'
-    ? `<span class="status-badge finished-badge">${match.minute}</span>`
-    : `<span class="status-badge upcoming-badge">VS</span>`;
-  
+
+  // FotMob style: horizontal layout
   card.innerHTML = `
-    <div class="match-main">
-      <div class="match-header">
-        <span class="match-time-small">${match.time}</span>
-        ${statusBadge}
-      </div>
-      <div class="match-teams">
-        <div class="team home-team">
-          <span class="team-logo">🔵</span>
-          <span class="team-name">${match.homeTeam}</span>
-        </div>
-        ${scoreDisplay}
-        <div class="team away-team">
-          <span class="team-name">${match.awayTeam}</span>
-          <span class="team-logo">🔴</span>
-        </div>
-      </div>
-      ${match.status !== 'upcoming' ? `
-        <div class="view-details-hint">
-          <span>Tap for match details</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </div>
-      ` : ''}
+    <div class="match-team">
+      <img class="match-team-logo" src="${match.homeLogo || 'https://via.placeholder.com/32x32?text=H'}" alt="${match.homeTeam}">
+      <span class="match-team-name">${match.homeTeam}</span>
     </div>
-    ${match.status !== 'upcoming' ? `
-      <div class="match-details">
-        <div class="details-header">
-          <h4>Match Statistics</h4>
-          <button class="close-details">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="18 15 12 9 6 15"></polyline>
-            </svg>
-          </button>
-        </div>
-        <div class="match-stats">
-          <div class="stat-row">
-            <span class="stat-value-home">${match.homeShots}</span>
-            <div class="stat-info">
-              <span class="stat-label">Shots</span>
-              <div class="stat-bar">
-                <div class="stat-bar-fill home" style="width: ${(match.homeShots / (match.homeShots + match.awayShots) * 100)}%"></div>
-                <div class="stat-bar-fill away" style="width: ${(match.awayShots / (match.homeShots + match.awayShots) * 100)}%"></div>
-              </div>
-            </div>
-            <span class="stat-value-away">${match.awayShots}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-value-home">${Math.floor(match.homeShots * 0.4)}</span>
-            <div class="stat-info">
-              <span class="stat-label">Shots on Target</span>
-              <div class="stat-bar">
-                <div class="stat-bar-fill home" style="width: ${match.homePossession}%"></div>
-                <div class="stat-bar-fill away" style="width: ${match.awayPossession}%"></div>
-              </div>
-            </div>
-            <span class="stat-value-away">${Math.floor(match.awayShots * 0.35)}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-value-home">${match.homePossession}%</span>
-            <div class="stat-info">
-              <span class="stat-label">Possession</span>
-              <div class="stat-bar">
-                <div class="stat-bar-fill home" style="width: ${match.homePossession}%"></div>
-                <div class="stat-bar-fill away" style="width: ${match.awayPossession}%"></div>
-              </div>
-            </div>
-            <span class="stat-value-away">${match.awayPossession}%</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-value-home">${Math.floor(Math.random() * 8 + 3)}</span>
-            <div class="stat-info">
-              <span class="stat-label">Corners</span>
-              <div class="stat-bar">
-                <div class="stat-bar-fill home" style="width: 55%"></div>
-                <div class="stat-bar-fill away" style="width: 45%"></div>
-              </div>
-            </div>
-            <span class="stat-value-away">${Math.floor(Math.random() * 7 + 2)}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-value-home">${Math.floor(Math.random() * 3 + 1)}</span>
-            <div class="stat-info">
-              <span class="stat-label">Fouls</span>
-              <div class="stat-bar">
-                <div class="stat-bar-fill home" style="width: 50%"></div>
-                <div class="stat-bar-fill away" style="width: 50%"></div>
-              </div>
-            </div>
-            <span class="stat-value-away">${Math.floor(Math.random() * 3 + 1)}</span>
-          </div>
-        </div>
-        <div class="match-actions">
-          <button class="action-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
-            Watch Highlights
-          </button>
-          <button class="action-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-            </svg>
-            Save Match
-          </button>
-        </div>
-      </div>
-    ` : ''}
+    <div class="match-score">${match.homeScore ?? ''} <span style="color:#8B92A1;font-weight:400;">-</span> ${match.awayScore ?? ''}</div>
+    <div class="match-team">
+      <img class="match-team-logo" src="${match.awayLogo || 'https://via.placeholder.com/32x32?text=A'}" alt="${match.awayTeam}">
+      <span class="match-team-name">${match.awayTeam}</span>
+    </div>
+    <div class="match-status">${match.status === 'NS' ? 'Upcoming' : match.status === 'FT' ? 'Finished' : match.status}</div>
   `;
-  
-  // Add click handler to toggle details
-  card.addEventListener('click', (e) => {
-    // Don't toggle if clicking close button or action buttons
-    if (e.target.closest('.close-details') || e.target.closest('.action-btn')) {
-      return;
-    }
-    
-    // Close all other open cards
-    document.querySelectorAll('.match-card.expanded').forEach(openCard => {
-      if (openCard !== card) {
-        openCard.classList.remove('expanded');
-      }
-    });
-    
-    // Toggle current card
-    card.classList.toggle('expanded');
-  });
-  
-  // Close button handler
-  const closeBtn = card.querySelector('.close-details');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      card.classList.remove('expanded');
-    });
-  }
-  
   return card;
 }
 
