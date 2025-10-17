@@ -1,32 +1,21 @@
-// ===================== ZONERA LIVE MATCH SYSTEM =====================
-
-// --- Firebase must be initialized before this script ---
+// ======== GLOBAL STATE ========
 let matchData = { leagues: [] };
+let apiMatches = { live: [], finished: [], upcoming: [] };
+let footballDataMatches = [];
 let currentFilter = 'all';
 let dateOffset = 0;
 let selectedDateIndex = 3;
 
-// Multi-source match data
-let apiMatches = { live: [], finished: [], upcoming: [] };
-let footballDataMatches = [];
-
-// ===================== FETCH FIREBASE MATCHES =====================
+// ======== FETCH FIREBASE MATCHES ========
 async function fetchMatchesFromFirebase() {
   try {
-    console.log('Fetching matches from Firebase...');
     const matchesSnapshot = await db.collection('matches').get();
     const leaguesSnapshot = await db.collection('leagues').get();
-
     const leaguesMap = {};
+    
     leaguesSnapshot.forEach(doc => {
-      const leagueData = doc.data();
-      leaguesMap[doc.id] = {
-        id: doc.id,
-        name: leagueData.name,
-        country: leagueData.country,
-        logo: leagueData.logo || '⚽',
-        matches: []
-      };
+      const data = doc.data();
+      leaguesMap[doc.id] = { id: doc.id, name: data.name, country: data.country, logo: data.logo || '⚽', matches: [] };
     });
 
     matchesSnapshot.forEach(doc => {
@@ -36,21 +25,43 @@ async function fetchMatchesFromFirebase() {
     });
 
     matchData.leagues = Object.values(leaguesMap).filter(l => l.matches.length > 0);
-    renderAllMatches();
-  } catch (error) {
-    console.error('Error fetching Firebase data:', error);
+  } catch (err) {
+    console.error('Firebase fetch error', err);
+    loadMockData();
   }
 }
 
-// --- Real-time updates ---
-function listenToMatchUpdates() {
-  db.collection('matches').onSnapshot(() => {
-    console.log('Firebase matches updated');
-    fetchMatchesFromFirebase();
-  });
+// ======== MOCK DATA ========
+function loadMockData() {
+  matchData = {
+    leagues: [
+      {
+        name: 'Premier League',
+        country: 'England',
+        logo: '🏴',
+        matches: [
+          { id: 1, homeTeam: 'Man City', awayTeam: 'Arsenal', homeScore: 2, awayScore: 2, status: 'live', time:'15:00' },
+          { id: 2, homeTeam: 'Liverpool', awayTeam: 'Chelsea', homeScore: 1, awayScore: 0, status: 'finished', time:'12:30' },
+          { id: 3, homeTeam: 'Man United', awayTeam: 'Tottenham', homeScore: null, awayScore: null, status: 'upcoming', time:'17:30' },
+          { id: 4, homeTeam: 'Everton', awayTeam: 'Leeds', homeScore: 0, awayScore: 1, status: 'live', time:'16:00' },
+          { id: 5, homeTeam: 'West Ham', awayTeam: 'Leicester', homeScore: 3, awayScore: 2, status: 'live', time:'16:30' }
+        ]
+      },
+      {
+        name: 'La Liga',
+        country: 'Spain',
+        logo: '🇪🇸',
+        matches: [
+          { id: 6, homeTeam: 'Real Madrid', awayTeam: 'Barcelona', homeScore: 1, awayScore: 1, status: 'live', time:'18:00' },
+          { id: 7, homeTeam: 'Atletico', awayTeam: 'Sevilla', homeScore: 2, awayScore: 2, status: 'live', time:'18:30' },
+          { id: 8, homeTeam: 'Valencia', awayTeam: 'Villarreal', homeScore: 0, awayScore: 0, status: 'upcoming', time:'20:00' }
+        ]
+      }
+    ]
+  };
 }
 
-// ===================== FETCH API-FOOTBALL MATCHES =====================
+// ======== FETCH API SPORTS ========
 const API_KEY = '617e8c14cae54043649b511c841119f4';
 async function fetchApiMatches() {
   const endpoints = {
@@ -58,209 +69,196 @@ async function fetchApiMatches() {
     finished: 'https://v3.football.api-sports.io/fixtures?status=FT',
     upcoming: 'https://v3.football.api-sports.io/fixtures?status=NS'
   };
-  const headers = { 'x-apisports-key': API_KEY };
+  const headers = { 'x-apisports-key': API_KEY, 'x-rapidapi-host': 'v3.football.api-sports.io' };
 
-  for (const type in endpoints) {
+  for (const type of Object.keys(endpoints)) {
     try {
       const res = await fetch(endpoints[type], { headers });
       const data = await res.json();
       apiMatches[type] = data.response || [];
     } catch (err) {
-      console.error(`Error fetching ${type} matches:`, err);
+      console.error('API error', type, err);
+      apiMatches[type] = [];
     }
   }
 }
 
-// ===================== FETCH FOOTBALL-DATA.ORG =====================
-const FOOTBALL_DATA_KEY = 'fd81f1998248477eb823f962a071cf6e';
-async function fetchMatchesFromFootballData() {
+// ======== NORMALIZE FOOTBALL DATA ========
+async function fetchFootballData() {
   try {
-    const response = await fetch('https://api.football-data.org/v4/matches', {
-      headers: { 'X-Auth-Token': FOOTBALL_DATA_KEY }
+    const res = await fetch('https://api.football-data.org/v4/matches', {
+      headers: { 'X-Auth-Token': 'fd81f1998248477eb823f962a071cf6e' }
     });
-    const data = await response.json();
+    const data = await res.json();
     footballDataMatches = data.matches || [];
   } catch (err) {
-    console.error('Football-Data.org fetch failed:', err);
+    console.error('Football-Data error', err);
   }
 }
 
-// ===================== MERGE ALL MATCHES =====================
+function normalizeFD(match) {
+  return {
+    homeTeam: match.homeTeam.name,
+    awayTeam: match.awayTeam.name,
+    homeScore: match.score.fullTime.home,
+    awayScore: match.score.fullTime.away,
+    status: match.status === 'IN_PLAY' ? 'live' : match.status === 'SCHEDULED' ? 'upcoming' : 'finished',
+    time: match.utcDate,
+    league: { id: match.competition.id, name: match.competition.name, country: match.competition.area.name, logo: null }
+  };
+}
+
+// ======== MERGE ALL MATCHES ========
 function getAllMatches() {
-  const merged = [];
+  let merged = [];
 
   // Firebase
-  matchData.leagues.forEach(league => {
-    league.matches.forEach(m => {
-      merged.push({
-        homeTeam: m.homeTeam,
-        awayTeam: m.awayTeam,
-        homeScore: m.homeScore,
-        awayScore: m.awayScore,
-        status: m.status,
-        time: m.time,
-        league: league
-      });
-    });
-  });
+  matchData.leagues.forEach(l => l.matches.forEach(m => merged.push({...m, league:{id:l.id,name:l.name,country:l.country,logo:l.logo}})));
 
-  // API-Football
-  for (const type in apiMatches) {
-    apiMatches[type].forEach(m => {
+  // API-Sports
+  ['live','finished','upcoming'].forEach(type=>{
+    apiMatches[type].forEach(m=>{
       merged.push({
         homeTeam: m.teams.home.name,
         awayTeam: m.teams.away.name,
         homeScore: m.goals.home,
         awayScore: m.goals.away,
-        status: m.fixture.status.short === 'FT' ? 'finished' : m.fixture.status.short === 'NS' ? 'upcoming' : 'live',
-        time: new Date(m.fixture.timestamp * 1000).toISOString(),
-        league: {
-          id: m.league.id,
-          name: m.league.name,
-          country: m.league.country,
-          logo: m.league.logo
-        }
+        status: type,
+        time: m.fixture.timestamp ? new Date(m.fixture.timestamp*1000).toISOString() : null,
+        league: { id:m.league.id, name:m.league.name, country:m.league.country, logo:m.league.logo }
       });
-    });
-  }
-
-  // Football-Data.org
-  footballDataMatches.forEach(m => {
-    merged.push({
-      homeTeam: m.homeTeam.name,
-      awayTeam: m.awayTeam.name,
-      homeScore: m.score.fullTime.home,
-      awayScore: m.score.fullTime.away,
-      status: m.status === 'IN_PLAY' ? 'live' : m.status === 'SCHEDULED' ? 'upcoming' : 'finished',
-      time: m.utcDate,
-      league: {
-        id: m.competition.id,
-        name: m.competition.name,
-        country: m.competition.area.name
-      }
     });
   });
 
-  // Apply current filter
-  return currentFilter === 'all' ? merged : merged.filter(m => m.status === currentFilter);
+  // Football-Data.org
+  footballDataMatches.forEach(m => merged.push(normalizeFD(m)));
+
+  if(currentFilter!=='all') merged = merged.filter(m=>m.status===currentFilter);
+  return merged;
 }
 
-// ===================== RENDER MATCHES =====================
-function renderAllMatches() {
-  const container = document.getElementById('league-groups');
+// ======== RENDER MATCHES ========
+// ======== RENDER LIVE MATCHES ========
+function renderLiveMatches() {
   const liveContainer = document.getElementById('live-matches');
-  container.innerHTML = '';
+  if (!liveContainer) return;
+  // Get all live matches from all sources
+  let liveMatches = getAllMatches().filter(m => m.status === 'live');
   liveContainer.innerHTML = '';
-
-  const all = getAllMatches();
-  if (!all.length) {
-    container.innerHTML = `<div class="no-data">No matches found</div>`;
+  if (!liveMatches.length) {
+    liveContainer.innerHTML = '<div style="color:#8B92A1;text-align:center;padding:24px;">No live matches</div>';
+    return;
+  }
+  liveMatches.forEach((m, idx) => {
+    const card = document.createElement('div');
+    card.className = 'live-match-card';
+    card.style.animationDelay = (idx * 0.08) + 's';
+    card.innerHTML = `
+      <div class="live-match-logo">${m.league.logo ? `<img src='${m.league.logo}' style='width:38px;height:38px;border-radius:50%;'>` : '⚽'}</div>
+      <div class="live-match-info">
+        <div class="live-match-teams">${m.homeTeam} <span style="color:#fff;">vs</span> ${m.awayTeam}</div>
+        <div class="live-match-score">${m.homeScore} <span style="color:#8B92A1;font-size:1.1rem;">-</span> ${m.awayScore}</div>
+        <span class="live-badge-glow"><span class="live-dot-glow"></span> LIVE</span>
+        <span class="live-match-status">${m.league.name} &middot; ${m.time ? new Date(m.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}</span>
+      </div>
+    `;
+    liveContainer.appendChild(card);
+  });
+}
+function renderMatches() {
+  const container = document.getElementById('league-groups');
+  container.innerHTML = '';
+  const matches = getAllMatches();
+  if(!matches.length){
+    container.innerHTML='<div style="color:#8B92A1;text-align:center;padding:32px;">No matches</div>';
     return;
   }
 
-  // Group by league
   const leagues = {};
-  all.forEach(m => {
-    const lid = m.league.name;
-    if (!leagues[lid]) leagues[lid] = { ...m.league, matches: [] };
-    leagues[lid].matches.push(m);
+  matches.forEach(m=>{
+    const id = m.league.id || m.league.name;
+    if(!leagues[id]) leagues[id]={...m.league,matches:[]};
+    leagues[id].matches.push(m);
   });
 
-  Object.values(leagues).forEach(league => {
-    const leagueCard = document.createElement('div');
-    leagueCard.className = 'league-card';
-    leagueCard.innerHTML = `
-      <div class="league-header">
-        <img src="${league.logo || 'https://img.icons8.com/emoji/48/soccer-ball.png'}" alt="logo" class="league-logo">
-        <h3>${league.name} <span>${league.country || ''}</span></h3>
+  Object.values(leagues).forEach(l=>{
+    const leagueGroup = document.createElement('div');
+    leagueGroup.className='league-group-card';
+    leagueGroup.innerHTML=`
+      <div class="league-group-header">
+        <span>${l.logo?`<img src="${l.logo}" style="width:20px;height:20px;border-radius:50%;margin-right:6px;">`:'⚽'}</span>
+        <span>${l.name} - ${l.country}</span>
       </div>
     `;
-
-    league.matches.forEach(match => {
-      const matchRow = document.createElement('div');
-      matchRow.className = `match-row ${match.status}`;
-      matchRow.innerHTML = `
-        <div class="teams">
-          <span>${match.homeTeam}</span>
-          <span>${match.awayTeam}</span>
-        </div>
-        <div class="score">
-          ${match.homeScore ?? '-'} : ${match.awayScore ?? '-'}
-        </div>
-        <div class="status">
-          ${match.status === 'live' ? "<span class='live-indicator'>LIVE</span>" : match.status === 'finished' ? 'FT' : '•'}
-        </div>
+    l.matches.forEach(m=>{
+      const row=document.createElement('div');
+      row.className='match-row'+(m.status==='live'?' live-match':'');
+      row.innerHTML=`
+        <div class="match-team"><span class="match-team-name">${m.homeTeam}</span></div>
+        <div class="match-score">${m.homeScore??''} - ${m.awayScore??''}</div>
+        <div class="match-team"><span class="match-team-name">${m.awayTeam}</span></div>
+        <div class="match-time">${m.time?new Date(m.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):''}</div>
       `;
-      leagueCard.appendChild(matchRow);
-
-      if (match.status === 'live') {
-        const liveCard = matchRow.cloneNode(true);
-        liveContainer.appendChild(liveCard);
-      }
+      leagueGroup.appendChild(row);
     });
-
-    container.appendChild(leagueCard);
+    container.appendChild(leagueGroup);
   });
+  // Also update live matches section
+  renderLiveMatches();
 }
 
-// ===================== DATE NAVIGATION =====================
-function loadDates() {
-  const dateList = document.getElementById('date-list');
-  const dates = [];
-
-  for (let i = -3; i <= 3; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + dateOffset + i);
-    dates.push({
-      date: d,
-      label: d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
-    });
-  }
-
-  dateList.innerHTML = dates.map((d, idx) =>
-    `<button class="date-item ${idx === selectedDateIndex ? 'active' : ''}" data-date="${d.date.toISOString()}">${d.label}</button>`
-  ).join('');
-
-  document.querySelectorAll('.date-item').forEach((btn, idx) => {
-    btn.addEventListener('click', () => {
-      selectedDateIndex = idx;
-      loadDates();
-    });
-  });
-}
-
-// ===================== FILTER BUTTONS =====================
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+// ======== FILTER TABS ========
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    currentFilter = btn.dataset.filter;
-    renderAllMatches();
+    currentFilter=btn.dataset.filter;
+    renderMatches();
   });
 });
 
-// ===================== AUTO REFRESH =====================
-setInterval(async () => {
-  await fetchApiMatches();
-  await fetchMatchesFromFootballData();
-  renderAllMatches();
-}, 60000);
+// ======== DATE NAVIGATION ========
+function loadDates() {
+  const dateList=document.getElementById('date-list');
+  const dates=[];
+  for(let i=-3;i<=3;i++){
+    const date=new Date();
+    date.setDate(date.getDate()+dateOffset+i);
+    dates.push({date:new Date(date),day:date.toLocaleDateString('en-US',{weekday:'short'}),dayNum:date.getDate()});
+  }
+  dateList.innerHTML=dates.map((d,idx)=>`
+    <button class="date-item${idx===selectedDateIndex?' active':''}" data-date="${d.date.toISOString()}">
+      <span class="day">${d.day}</span>
+      <span class="day-num">${d.dayNum}</span>
+    </button>
+  `).join('');
+  Array.from(dateList.children).forEach((btn,idx)=>{
+    btn.addEventListener('click',()=>{
+      selectedDateIndex=idx;
+      loadDates();
+      renderMatches();
+    });
+  });
+}
 
-// ===================== INITIALIZE =====================
-window.onload = async () => {
-  loadDates();
-  listenToMatchUpdates();
+// ======== AUTO UPDATE ========
+setInterval(async ()=>{
+  await fetchApiMatches();
+  await fetchFootballData();
   await fetchMatchesFromFirebase();
-  await fetchApiMatches();
-  await fetchMatchesFromFootballData();
-  renderAllMatches();
+  renderMatches();
+},60000);
 
-  document.querySelector('.date-btn.prev').addEventListener('click', () => {
-    dateOffset--;
-    loadDates();
-  });
-  document.querySelector('.date-btn.next').addEventListener('click', () => {
-    dateOffset++;
-    loadDates();
-  });
+// ======== INIT ========
+window.onload=async()=>{
+  loadDates();
+  await fetchMatchesFromFirebase();
+  listenToMatchUpdates();
+  await fetchApiMatches();
+  await fetchFootballData();
+  renderMatches();
+  renderLiveMatches();
+
+  document.querySelector('.date-btn.prev')?.addEventListener('click',()=>{dateOffset--;loadDates();renderMatches();renderLiveMatches();});
+  document.querySelector('.date-btn.next')?.addEventListener('click',()=>{dateOffset++;loadDates();renderMatches();renderLiveMatches();});
 };
