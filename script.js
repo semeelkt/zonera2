@@ -438,6 +438,102 @@ setInterval(() => {
 
 // Initialize
 window.onload = () => {
+  // News Form Logic
+  const newsForm = document.getElementById('news-form');
+  const newsSuccess = document.getElementById('news-success');
+  const newsList = document.getElementById('news-list');
+
+  // Helper: Upload image to Firebase Storage (if available)
+  async function uploadImage(file) {
+    if (!file || typeof firebase === 'undefined' || !firebase.storage) return null;
+    const storageRef = firebase.storage().ref('news-images/' + Date.now() + '-' + file.name);
+    await storageRef.put(file);
+    return await storageRef.getDownloadURL();
+  }
+
+  // Add News
+  if (newsForm) {
+    newsForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('news-title').value.trim();
+      const content = document.getElementById('news-content').value.trim();
+      const imageInput = document.getElementById('news-image');
+      let imageUrl = '';
+      newsSuccess.style.display = 'none';
+      if (imageInput && imageInput.files && imageInput.files[0]) {
+        // Try upload image to Firebase Storage
+        try {
+          imageUrl = await uploadImage(imageInput.files[0]);
+        } catch (err) {
+          imageUrl = '';
+        }
+      }
+      // Save news to Firestore
+      if (typeof db !== 'undefined') {
+        await db.collection('news').add({
+          title,
+          content,
+          imageUrl,
+          created: new Date().toISOString()
+        });
+        newsSuccess.textContent = 'News added!';
+        newsSuccess.style.display = 'block';
+        newsForm.reset();
+        loadNews();
+      } else {
+        newsSuccess.textContent = 'Firebase not available.';
+        newsSuccess.style.display = 'block';
+      }
+    });
+  }
+
+  // Load News and Display Cards
+  async function loadNews() {
+    if (typeof db === 'undefined' || !newsList) return;
+    const snapshot = await db.collection('news').orderBy('created', 'desc').get();
+    newsList.innerHTML = '';
+    snapshot.forEach(doc => {
+      const news = doc.data();
+      const card = document.createElement('div');
+      card.className = 'news-card';
+      card.innerHTML = `
+        <img class="news-card-img" src="${news.imageUrl || 'https://via.placeholder.com/80x80?text=No+Image'}" alt="News Image">
+        <div class="news-card-content">
+          <div class="news-card-title">${news.title}</div>
+          <div class="news-card-preview">${news.content}</div>
+        </div>
+      `;
+      card.addEventListener('click', () => {
+        // Open full news page (simple modal for now)
+        showNewsModal(news);
+      });
+      newsList.appendChild(card);
+    });
+  }
+
+  // Show full news modal (simple implementation)
+  function showNewsModal(news) {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:500px;">
+        <span class="close" id="close-news-modal">&times;</span>
+        <h2>${news.title}</h2>
+        <img src="${news.imageUrl || 'https://via.placeholder.com/300x180?text=No+Image'}" style="width:100%;max-height:220px;object-fit:cover;border-radius:8px;margin-bottom:16px;">
+        <p style="color:#E8E8E8;font-size:1.08rem;">${news.content}</p>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('close-news-modal').onclick = () => {
+      modal.remove();
+    };
+    window.onclick = (event) => {
+      if (event.target === modal) modal.remove();
+    };
+  }
+
+  // Initial load
+  loadNews();
   // Admin Login Modal & Panel Logic
   const adminLoginBtn = document.getElementById('admin-login-btn');
   const adminModal = document.getElementById('admin-modal');
