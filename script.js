@@ -365,34 +365,38 @@ window.onload = () => {
         const news = doc.data();
         const card = document.createElement('div');
         card.className = 'news-card';
-        // Use a fallback if imageUrl is missing or invalid
         let imgSrc = news.imageUrl && news.imageUrl.startsWith('http') ? news.imageUrl : 'https://via.placeholder.com/80x80?text=No+Image';
+        let isAdmin = false;
+        const adminPanel = document.getElementById('admin-panel');
+        if (adminPanel && adminPanel.style.display === 'block') {
+          isAdmin = true;
+        }
         card.innerHTML = `
           <img class="news-card-img" src="${imgSrc}" alt="News Image" onerror="this.src='https://via.placeholder.com/80x80?text=No+Image'">
           <div class="news-card-content">
             <div class="news-card-title">${news.title}</div>
             <div class="news-card-preview">${news.content}</div>
           </div>
-          <button class="news-delete-btn" title="Delete News">🗑️</button>
+          ${isAdmin ? '<button class="news-delete-btn" title="Delete News">🗑️</button>' : ''}
         `;
         card.addEventListener('click', (e) => {
-          // Prevent modal if clicking delete button
           if (e.target.classList.contains('news-delete-btn')) return;
           showNewsModal(news);
         });
-        // Delete button handler
-        card.querySelector('.news-delete-btn').addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (confirm('Are you sure you want to delete this news?')) {
-            try {
-              await db.collection('news').doc(doc.id).delete();
-              await loadNews();
-            } catch (err) {
-              alert('Error deleting news.');
-              console.error('Delete error:', err);
+        if (isAdmin) {
+          card.querySelector('.news-delete-btn').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm('Are you sure you want to delete this news?')) {
+              try {
+                await db.collection('news').doc(doc.id).delete();
+                await loadNews();
+              } catch (err) {
+                alert('Error deleting news.');
+                console.error('Delete error:', err);
+              }
             }
-          }
-        });
+          });
+        }
         newsContainer.appendChild(card);
       });
       newsList.appendChild(newsContainer);
