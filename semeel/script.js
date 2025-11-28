@@ -5,7 +5,11 @@ let matchData = {
 
 // SportDB API Configuration
 const SPORTDB_API_BASE = 'https://api.sportdb.dev/api/flashscore/';
-const SPORTDB_API_KEY = 'YOUR_API_KEY'; // Replace with your actual API key from https://dashboard.sportdb.dev/api-keys
+const SPORTDB_API_KEY = 'ys2ROiiJOETdhhgS1GINBfVIQG8vdI5HbwCtOn8m'; // API key from https://dashboard.sportdb.dev/api-keys
+
+// Store selected date for filtering
+let selectedDate = new Date();
+selectedDate.setHours(0, 0, 0, 0);
 
 // Fetch matches from SportDB Flashscore API
 async function fetchMatchesFromSportDB() {
@@ -32,8 +36,7 @@ async function fetchMatchesFromSportDB() {
     loadMatches();
   } catch (error) {
     console.error('Error fetching from SportDB API:', error);
-    // Fallback to mock data if API fails
-    loadMockData();
+    alert('Error loading matches from API. Please check your API key and try again.');
   }
 }
 
@@ -44,6 +47,14 @@ function transformSportDBData(apiData) {
   // Parse the API response and group matches by league
   if (apiData && Array.isArray(apiData)) {
     apiData.forEach(match => {
+      // Parse match date and filter by selected date
+      const matchDate = new Date(match.date);
+      matchDate.setHours(0, 0, 0, 0);
+      
+      if (matchDate.getTime() !== selectedDate.getTime()) {
+        return; // Skip matches not on the selected date
+      }
+      
       const leagueId = match.league_id || 'other';
       const leagueName = match.league || 'Unknown League';
       const country = match.country || 'Unknown';
@@ -89,114 +100,9 @@ function transformSportDBData(apiData) {
   }
   
   matchData.leagues = Object.values(leaguesMap).filter(league => league.matches.length > 0);
-  console.log('Transformed data:', matchData);
+  console.log('Transformed data for', selectedDate.toDateString(), ':', matchData);
 }
 
-// Mock data structured by leagues (FotMob style) - FALLBACK
-function loadMockData() {
-  matchData = {
-    leagues: [
-      {
-        name: 'Premier League',
-        country: 'England',
-        logo: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-        matches: [
-        { 
-          id: 1,
-          homeTeam: 'Manchester City', 
-          awayTeam: 'Arsenal', 
-          homeScore: 2, 
-          awayScore: 2, 
-          status: 'live',
-          minute: '78\'',
-          homeShots: 14,
-          awayShots: 11,
-          homePossession: 58,
-          awayPossession: 42,
-          time: '15:00'
-        },
-        { 
-          id: 2,
-          homeTeam: 'Liverpool', 
-          awayTeam: 'Chelsea', 
-          homeScore: 1, 
-          awayScore: 0, 
-          status: 'finished',
-          minute: 'FT',
-          homeShots: 16,
-          awayShots: 8,
-          homePossession: 62,
-          awayPossession: 38,
-          time: '12:30'
-        },
-        { 
-          id: 3,
-          homeTeam: 'Manchester United', 
-          awayTeam: 'Tottenham', 
-          homeScore: null, 
-          awayScore: null, 
-          status: 'upcoming',
-          minute: '',
-          time: '17:30'
-        }
-      ]
-    },
-    {
-      name: 'La Liga',
-      country: 'Spain',
-      logo: '🇪🇸',
-      matches: [
-        { 
-          id: 4,
-          homeTeam: 'Real Madrid', 
-          awayTeam: 'Barcelona', 
-          homeScore: 1, 
-          awayScore: 1, 
-          status: 'live',
-          minute: '65\'',
-          homeShots: 12,
-          awayShots: 15,
-          homePossession: 48,
-          awayPossession: 52,
-          time: '16:00'
-        },
-        { 
-          id: 5,
-          homeTeam: 'Atletico Madrid', 
-          awayTeam: 'Sevilla', 
-          homeScore: null, 
-          awayScore: null, 
-          status: 'upcoming',
-          minute: '',
-          time: '19:00'
-        }
-      ]
-    },
-    {
-      name: 'Serie A',
-      country: 'Italy',
-      logo: '🇮🇹',
-      matches: [
-        { 
-          id: 6,
-          homeTeam: 'AC Milan', 
-          awayTeam: 'Inter Milan', 
-          homeScore: 2, 
-          awayScore: 3, 
-          status: 'finished',
-          minute: 'FT',
-          homeShots: 13,
-          awayShots: 17,
-          homePossession: 51,
-          awayPossession: 49,
-          time: '14:00'
-        }
-      ]
-    }
-  ]
-  };
-  loadMatches();
-}
 
 let currentFilter = 'all';
 
@@ -216,12 +122,28 @@ function loadDates() {
     });
   }
   
-  dateList.innerHTML = dates.map(d => `
-    <button class="date-item ${d.isToday ? 'active' : ''}">
+  dateList.innerHTML = dates.map((d, index) => `
+    <button class="date-item ${d.isToday ? 'active' : ''}" data-index="${index}">
       <span class="day">${d.day}</span>
       <span class="day-num">${d.dayNum}</span>
     </button>
   `).join('');
+  
+  // Add click handlers to date buttons
+  document.querySelectorAll('.date-item').forEach((btn, index) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.date-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      const date = new Date();
+      date.setDate(date.getDate() + (index - 3));
+      date.setHours(0, 0, 0, 0);
+      selectedDate = date;
+      
+      console.log('Selected date:', selectedDate);
+      loadMatches();
+    });
+  });
 }
 
 // Load matches grouped by league
@@ -479,13 +401,11 @@ setInterval(() => {
 window.onload = () => {
   loadDates();
   
-  // Load data from SportDB API
+  // Load data from SportDB API only
   if (SPORTDB_API_KEY !== 'YOUR_API_KEY') {
     console.log('Loading data from SportDB API...');
     fetchMatchesFromSportDB();
   } else {
-    console.warn('SportDB API key not configured. Using mock data...');
-    console.log('To use SportDB API, get your API key from: https://dashboard.sportdb.dev/api-keys');
-    loadMockData();
+    alert('Error: SportDB API key is not configured. Please set your API key in the script.');
   }
 };
