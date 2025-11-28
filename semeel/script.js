@@ -1,56 +1,95 @@
-// ====== FIREBASE DATA MANAGEMENT ======
+// ====== SPORTDB API DATA MANAGEMENT ======
 let matchData = {
   leagues: []
 };
 
-// Fetch matches from Firebase Firestore
-async function fetchMatchesFromFirebase() {
+// SportDB API Configuration
+const SPORTDB_API_BASE = 'https://api.sportdb.dev/api/flashscore/';
+const SPORTDB_API_KEY = 'YOUR_API_KEY'; // Replace with your actual API key from https://dashboard.sportdb.dev/api-keys
+
+// Fetch matches from SportDB Flashscore API
+async function fetchMatchesFromSportDB() {
   try {
-    console.log('Fetching matches from Firebase...');
-    const matchesSnapshot = await db.collection('matches').get();
-    const leaguesSnapshot = await db.collection('leagues').get();
+    console.log('Fetching matches from SportDB Flashscore API...');
     
-    // Build leagues map
-    const leaguesMap = {};
-    leaguesSnapshot.forEach(doc => {
-      const leagueData = doc.data();
-      leaguesMap[doc.id] = {
-        id: doc.id,
-        name: leagueData.name,
-        country: leagueData.country,
-        logo: leagueData.logo || '⚽',
-        matches: []
-      };
-    });
-    
-    // Add matches to corresponding leagues
-    matchesSnapshot.forEach(doc => {
-      const match = { id: doc.id, ...doc.data() };
-      const leagueId = match.leagueId || 'other';
-      
-      if (leaguesMap[leagueId]) {
-        leaguesMap[leagueId].matches.push(match);
+    const response = await fetch(SPORTDB_API_BASE, {
+      method: 'GET',
+      headers: {
+        'X-API-Key': SPORTDB_API_KEY,
+        'Content-Type': 'application/json'
       }
     });
     
-    // Convert map to array
-    matchData.leagues = Object.values(leaguesMap).filter(league => league.matches.length > 0);
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} - Make sure you have a valid API key from https://dashboard.sportdb.dev/api-keys`);
+    }
     
-    console.log('Firebase data loaded:', matchData);
+    const apiData = await response.json();
+    console.log('SportDB API data received:', apiData);
+    
+    // Transform SportDB data to our format
+    transformSportDBData(apiData);
     loadMatches();
   } catch (error) {
-    console.error('Error fetching from Firebase:', error);
-    // Fallback to mock data if Firebase fails
+    console.error('Error fetching from SportDB API:', error);
+    // Fallback to mock data if API fails
     loadMockData();
   }
 }
 
-// Real-time listener for matches (optional - for live updates)
-function listenToMatchUpdates() {
-  db.collection('matches').onSnapshot((snapshot) => {
-    console.log('Matches updated in real-time');
-    fetchMatchesFromFirebase();
-  });
+// Transform SportDB API response to our match data format
+function transformSportDBData(apiData) {
+  const leaguesMap = {};
+  
+  // Parse the API response and group matches by league
+  if (apiData && Array.isArray(apiData)) {
+    apiData.forEach(match => {
+      const leagueId = match.league_id || 'other';
+      const leagueName = match.league || 'Unknown League';
+      const country = match.country || 'Unknown';
+      
+      if (!leaguesMap[leagueId]) {
+        leaguesMap[leagueId] = {
+          id: leagueId,
+          name: leagueName,
+          country: country,
+          logo: '⚽',
+          matches: []
+        };
+      }
+      
+      // Determine match status
+      let status = 'upcoming';
+      let minute = '';
+      if (match.statusShort === 'LIVE') {
+        status = 'live';
+        minute = `${match.elapsed}'`;
+      } else if (match.statusShort === 'FT' || match.statusShort === '3FT') {
+        status = 'finished';
+        minute = 'FT';
+      }
+      
+      const matchObj = {
+        id: match.match_id,
+        homeTeam: match.homeTeam?.team_name || match.home || 'Home Team',
+        awayTeam: match.awayTeam?.team_name || match.away || 'Away Team',
+        homeScore: match.goalsHomeTeam !== null ? match.goalsHomeTeam : null,
+        awayScore: match.goalsAwayTeam !== null ? match.goalsAwayTeam : null,
+        status: status,
+        minute: minute,
+        homeShots: match.statistics?.homeTeam?.shots || 0,
+        awayShots: match.statistics?.awayTeam?.shots || 0,
+        homePossession: match.statistics?.homeTeam?.possession || 50,
+        awayPossession: match.statistics?.awayTeam?.possession || 50,
+        time: new Date(match.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      leaguesMap[leagueId].matches.push(matchObj);
+    });
+  }
+  
+  matchData.leagues = Object.values(leaguesMap).filter(league => league.matches.length > 0);
+  console.log('Transformed data:', matchData);
 }
 
 // Mock data structured by leagues (FotMob style) - FALLBACK
@@ -440,14 +479,13 @@ setInterval(() => {
 window.onload = () => {
   loadDates();
   
-  // Check if Firebase is available
-  if (typeof db !== 'undefined') {
-    console.log('Loading data from Firebase...');
-    fetchMatchesFromFirebase();
-    // Enable real-time updates (optional)
-    // listenToMatchUpdates();
+  // Load data from SportDB API
+  if (SPORTDB_API_KEY !== 'YOUR_API_KEY') {
+    console.log('Loading data from SportDB API...');
+    fetchMatchesFromSportDB();
   } else {
-    console.log('Firebase not available, using mock data...');
+    console.warn('SportDB API key not configured. Using mock data...');
+    console.log('To use SportDB API, get your API key from: https://dashboard.sportdb.dev/api-keys');
     loadMockData();
   }
 };
