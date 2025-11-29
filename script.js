@@ -1,3 +1,6 @@
+// ======== GEMINI API IMPORT ========
+import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
 // ======== GLOBAL STATE ========
 let matchData = { leagues: [] };
 let apiMatches = { live: [], finished: [], upcoming: [] };
@@ -5,6 +8,10 @@ let footballDataMatches = [];
 let currentFilter = 'all';
 let dateOffset = 0;
 let selectedDateIndex = 3;
+
+// ======== GEMINI API CONFIG ========
+const GEMINI_API_KEY = 'AIzaSyDaghpiFzUM5QsAWG617mOh3QAMQrH_isQ';
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // ======== FETCH FIREBASE MATCHES ========
 async function fetchMatchesFromFirebase() {
@@ -61,25 +68,63 @@ function loadMockData() {
   };
 }
 
-// ======== FETCH API SPORTS ========
-const API_KEY = '617e8c14cae54043649b511c841119f4';
+// ======== FETCH GEMINI API ========
 async function fetchApiMatches() {
-  const endpoints = {
-    live: 'https://v3.football.api-sports.io/fixtures?live=all',
-    finished: 'https://v3.football.api-sports.io/fixtures?status=FT',
-    upcoming: 'https://v3.football.api-sports.io/fixtures?status=NS'
-  };
-  const headers = { 'x-apisports-key': API_KEY, 'x-rapidapi-host': 'v3.football.api-sports.io' };
-
-  for (const type of Object.keys(endpoints)) {
-    try {
-      const res = await fetch(endpoints[type], { headers });
-      const data = await res.json();
-      apiMatches[type] = data.response || [];
-    } catch (err) {
-      console.error('API error', type, err);
-      apiMatches[type] = [];
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    const prompt = `Generate a JSON array of 10 realistic football/soccer match fixtures with the following structure:
+    [
+      {
+        "id": number,
+        "teams": {
+          "home": { "name": "Team Name" },
+          "away": { "name": "Team Name" }
+        },
+        "goals": {
+          "home": number or null,
+          "away": number or null
+        },
+        "fixture": {
+          "timestamp": unix timestamp
+        },
+        "league": {
+          "id": number,
+          "name": "League Name",
+          "country": "Country Name",
+          "logo": "url or null"
+        }
+      }
+    ]
+    
+    Make sure to include:
+    - 3-4 live matches (status = live)
+    - 3-4 finished matches (with goals scored)
+    - 2-3 upcoming matches (with null goals)
+    - Mix of different leagues (Premier League, La Liga, Serie A, Bundesliga, Ligue 1)
+    - Realistic team names and scores
+    
+    Return ONLY the JSON array, no additional text.`;
+    
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    
+    // Parse the JSON from the response
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const matches = JSON.parse(jsonMatch[0]);
+      
+      // Categorize matches by status
+      apiMatches.live = matches.filter(m => m.goals.home !== null && m.goals.away !== null && Math.random() > 0.5);
+      apiMatches.finished = matches.filter(m => m.goals.home !== null && m.goals.away !== null && !apiMatches.live.includes(m));
+      apiMatches.upcoming = matches.filter(m => m.goals.home === null);
+      
+      console.log('Gemini API matches loaded:', apiMatches);
     }
+  } catch (err) {
+    console.error('Gemini API error', err);
+    apiMatches = { live: [], finished: [], upcoming: [] };
+    loadMockData();
   }
 }
 
@@ -115,7 +160,7 @@ function getAllMatches() {
   // Firebase
   matchData.leagues.forEach(l => l.matches.forEach(m => merged.push({...m, league:{id:l.id,name:l.name,country:l.country,logo:l.logo}})));
 
-  // API-Sports
+  // Gemini API
   ['live','finished','upcoming'].forEach(type=>{
     apiMatches[type].forEach(m=>{
       merged.push({
