@@ -73,17 +73,19 @@ async function fetchApiMatches() {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
+    const now = Math.floor(Date.now() / 1000);
     const prompt = `Generate a JSON array of 10 realistic football/soccer match fixtures with the following structure:
     [
       {
         "id": number,
+        "status": "live" | "finished" | "upcoming",
         "teams": {
           "home": { "name": "Team Name" },
           "away": { "name": "Team Name" }
         },
         "goals": {
-          "home": number or null,
-          "away": number or null
+          "home": number,
+          "away": number
         },
         "fixture": {
           "timestamp": unix timestamp
@@ -92,35 +94,43 @@ async function fetchApiMatches() {
           "id": number,
           "name": "League Name",
           "country": "Country Name",
-          "logo": "url or null"
+          "logo": null
         }
       }
     ]
     
     Make sure to include:
-    - 3-4 live matches (status = live)
-    - 3-4 finished matches (with goals scored)
-    - 2-3 upcoming matches (with null goals)
+    - 3-4 matches with status "live" (with scores)
+    - 3-4 matches with status "finished" (with scores)
+    - 2-3 matches with status "upcoming" (with scores set to 0-0)
     - Mix of different leagues (Premier League, La Liga, Serie A, Bundesliga, Ligue 1)
     - Realistic team names and scores
+    - For live matches, use recent timestamps
+    - For upcoming matches, use future timestamps
     
-    Return ONLY the JSON array, no additional text.`;
+    Return ONLY valid JSON array, no markdown, no backticks, no additional text.`;
     
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
     
-    // Parse the JSON from the response
-    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const matches = JSON.parse(jsonMatch[0]);
-      
-      // Categorize matches by status
-      apiMatches.live = matches.filter(m => m.goals.home !== null && m.goals.away !== null && Math.random() > 0.5);
-      apiMatches.finished = matches.filter(m => m.goals.home !== null && m.goals.away !== null && !apiMatches.live.includes(m));
-      apiMatches.upcoming = matches.filter(m => m.goals.home === null);
-      
-      console.log('Gemini API matches loaded:', apiMatches);
+    // Parse the JSON from the response - handle cases where it might be wrapped
+    let cleanText = responseText.trim();
+    if (cleanText.startsWith('```')) {
+      cleanText = cleanText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     }
+    
+    const matches = JSON.parse(cleanText);
+    
+    // Categorize matches by status from Gemini response
+    apiMatches.live = matches.filter(m => m.status === 'live');
+    apiMatches.finished = matches.filter(m => m.status === 'finished');
+    apiMatches.upcoming = matches.filter(m => m.status === 'upcoming');
+    
+    console.log('Gemini API matches loaded:', {
+      live: apiMatches.live.length,
+      finished: apiMatches.finished.length,
+      upcoming: apiMatches.upcoming.length
+    });
   } catch (err) {
     console.error('Gemini API error', err);
     apiMatches = { live: [], finished: [], upcoming: [] };
@@ -287,6 +297,20 @@ function loadDates() {
 }
 
 // ======== AUTO UPDATE ========
+function listenToMatchUpdates() {
+  // Placeholder for real-time updates if needed
+  try {
+    if (typeof db !== 'undefined') {
+      db.collection('matches').onSnapshot(() => {
+        fetchMatchesFromFirebase();
+        renderMatches();
+      });
+    }
+  } catch (err) {
+    console.log('Firebase listening not available');
+  }
+}
+
 setInterval(async ()=>{
   await fetchApiMatches();
   await fetchFootballData();
@@ -296,13 +320,27 @@ setInterval(async ()=>{
 
 // ======== INIT ========
 window.onload=async()=>{
-  loadDates();
-  await fetchMatchesFromFirebase();
-  listenToMatchUpdates();
-  await fetchApiMatches();
-  await fetchFootballData();
-  renderMatches();
-  renderLiveMatches();
+  try {
+    console.log('Initializing app...');
+    loadDates();
+    
+    // Fetch all data sources
+    await Promise.all([
+      fetchMatchesFromFirebase(),
+      fetchApiMatches(),
+      fetchFootballData()
+    ]);
+    
+    listenToMatchUpdates();
+    renderMatches();
+    renderLiveMatches();
+    
+    console.log('App initialized successfully');
+  } catch (err) {
+    console.error('Initialization error:', err);
+    loadMockData();
+    renderMatches();
+  }
 
   document.querySelector('.date-btn.prev')?.addEventListener('click',()=>{dateOffset--;loadDates();renderMatches();renderLiveMatches();});
   document.querySelector('.date-btn.next')?.addEventListener('click',()=>{dateOffset++;loadDates();renderMatches();renderLiveMatches();});
