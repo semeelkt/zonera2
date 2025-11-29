@@ -76,9 +76,23 @@ function loadMockData() {
 // ======== FETCH GEMINI API ========
 async function fetchApiMatches() {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Try to get a working model
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    } catch (e1) {
+      try {
+        model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" });
+      } catch (e2) {
+        try {
+          model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+        } catch (e3) {
+          throw new Error("No compatible Gemini model available");
+        }
+      }
+    }
     
-    const prompt = `Generate a JSON array of 10 realistic football/soccer match fixtures. Return ONLY valid JSON, no markdown or backticks.
+    const prompt = `Generate a JSON array of 10 realistic football/soccer match fixtures. Return ONLY valid JSON.
     [
       {
         "id": 1,
@@ -101,15 +115,7 @@ async function fetchApiMatches() {
           "logo": null
         }
       }
-    ]
-    
-    Include:
-    - 3-4 matches with status "live" (with scores like 1-0, 2-1, etc)
-    - 3-4 matches with status "finished" (with final scores)
-    - 2-3 matches with status "upcoming" (with 0-0 scores)
-    - Mix of leagues: Premier League, La Liga, Serie A, Bundesliga, Ligue 1
-    
-    Return ONLY the JSON array.`;
+    ]`;
     
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
@@ -324,28 +330,41 @@ window.onload=async()=>{
     console.log('🚀 Initializing Zonera app...');
     loadDates();
     
-    // Fetch all data sources (continue even if some fail)
-    await Promise.allSettled([
-      fetchMatchesFromFirebase(),
-      fetchApiMatches(),
-      fetchFootballData()
-    ]);
+    // First load mock data as fallback
+    loadMockData();
     
-    // Try to listen to Firebase updates
-    listenToMatchUpdates();
-    
-    // Ensure we have at least mock data
-    if (!apiMatches.live.length && !apiMatches.finished.length && !apiMatches.upcoming.length) {
-      console.log('📦 Loading mock data...');
-      loadMockData();
+    // Try to fetch Gemini API
+    try {
+      await fetchApiMatches();
+    } catch (e) {
+      console.warn('Gemini fetch failed, keeping mock data');
     }
     
+    // Try Firebase
+    try {
+      await fetchMatchesFromFirebase();
+    } catch (e) {
+      console.warn('Firebase fetch failed');
+    }
+    
+    // Try to listen to Firebase updates
+    try {
+      listenToMatchUpdates();
+    } catch (e) {
+      console.warn('Firebase listener failed');
+    }
+    
+    // Render everything
     renderMatches();
     renderLiveMatches();
     
     console.log('✓ App ready!');
+    console.log('Displaying:', {
+      apiMatches,
+      mockDataLoaded: matchData.leagues.length > 0
+    });
   } catch (err) {
-    console.error('Initialization error:', err);
+    console.error('❌ Fatal error:', err);
     loadMockData();
     renderMatches();
   }
