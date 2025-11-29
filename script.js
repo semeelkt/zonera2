@@ -76,73 +76,12 @@ function loadMockData() {
 // ======== FETCH GEMINI API ========
 async function fetchApiMatches() {
   try {
-    // Try to get a working model
-    let model;
-    try {
-      model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    } catch (e1) {
-      try {
-        model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" });
-      } catch (e2) {
-        try {
-          model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
-        } catch (e3) {
-          throw new Error("No compatible Gemini model available");
-        }
-      }
-    }
-    
-    const prompt = `Generate a JSON array of 10 realistic football/soccer match fixtures. Return ONLY valid JSON.
-    [
-      {
-        "id": 1,
-        "status": "live",
-        "teams": {
-          "home": { "name": "Manchester City" },
-          "away": { "name": "Arsenal" }
-        },
-        "goals": {
-          "home": 2,
-          "away": 1
-        },
-        "fixture": {
-          "timestamp": ${Math.floor(Date.now() / 1000)}
-        },
-        "league": {
-          "id": 1,
-          "name": "Premier League",
-          "country": "England",
-          "logo": null
-        }
-      }
-    ]`;
-    
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    
-    // Clean up the response
-    let cleanText = responseText.trim();
-    if (cleanText.startsWith('```')) {
-      cleanText = cleanText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    }
-    
-    const matches = JSON.parse(cleanText);
-    
-    // Categorize matches by status
-    apiMatches.live = matches.filter(m => m.status === 'live');
-    apiMatches.finished = matches.filter(m => m.status === 'finished');
-    apiMatches.upcoming = matches.filter(m => m.status === 'upcoming');
-    
-    console.log('✓ Gemini API matches loaded:', {
-      live: apiMatches.live.length,
-      finished: apiMatches.finished.length,
-      upcoming: apiMatches.upcoming.length,
-      total: matches.length
-    });
+    // Skip Gemini for now - it's causing errors
+    console.log('⏭️ Skipping Gemini API (model availability issues)');
+    apiMatches = { live: [], finished: [], upcoming: [] };
   } catch (err) {
     console.warn('⚠ Gemini API error:', err.message);
-    console.log('Using mock data instead...');
-    loadMockData();
+    apiMatches = { live: [], finished: [], upcoming: [] };
   }
 }
 
@@ -229,29 +168,41 @@ function getAllMatches() {
 // ======== RENDER LIVE MATCHES ========
 function renderLiveMatches() {
   const liveContainer = document.getElementById('live-matches');
-  if (!liveContainer) return;
-  // Get all live matches from all sources
-  let liveMatches = getAllMatches().filter(m => m.status === 'live');
-  liveContainer.innerHTML = '';
-  if (!liveMatches.length) {
-    liveContainer.innerHTML = '<div style="color:#8B92A1;text-align:center;padding:24px;">No live matches</div>';
+  if (!liveContainer) {
+    console.warn('Live matches container not found');
     return;
   }
+  
+  let liveMatches = getAllMatches().filter(m => m.status === 'live');
+  liveContainer.innerHTML = '';
+  liveContainer.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  
+  if (!liveMatches.length) {
+    const noMatch = document.createElement('div');
+    noMatch.style.cssText = 'color:#8B92A1;text-align:center;padding:24px;';
+    noMatch.textContent = 'No live matches';
+    liveContainer.appendChild(noMatch);
+    return;
+  }
+  
   liveMatches.forEach((m, idx) => {
     const card = document.createElement('div');
-    card.className = 'live-match-card';
-    card.style.animationDelay = (idx * 0.08) + 's';
+    card.style.cssText = 'background:#1a1d1e;border-left:4px solid #ff1a3c;padding:16px;border-radius:8px;display:flex;gap:16px;align-items:center;';
+    
     card.innerHTML = `
-      <div class="live-match-logo">${m.league.logo ? `<img src='${m.league.logo}' style='width:38px;height:38px;border-radius:50%;'>` : '⚽'}</div>
-      <div class="live-match-info">
-        <div class="live-match-teams">${m.homeTeam} <span style="color:#fff;">vs</span> ${m.awayTeam}</div>
-        <div class="live-match-score">${m.homeScore} <span style="color:#8B92A1;font-size:1.1rem;">-</span> ${m.awayScore}</div>
-        <span class="live-badge-glow"><span class="live-dot-glow"></span> LIVE</span>
-        <span class="live-match-status">${m.league.name} &middot; ${m.time ? new Date(m.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}</span>
+      <div style="flex:0;font-size:2rem;">${m.league.logo || '⚽'}</div>
+      <div style="flex:1;">
+        <div style="font-weight:bold;color:#fff;margin-bottom:4px;">${m.homeTeam} vs ${m.awayTeam}</div>
+        <div style="font-size:1.5rem;font-weight:bold;color:#00D266;margin-bottom:4px;">${m.homeScore} - ${m.awayScore}</div>
+        <div style="font-size:0.85rem;color:#8B92A1;">
+          <span style="color:#ff1a3c;font-weight:bold;">● LIVE</span> • ${m.league.name}
+        </div>
       </div>
     `;
     liveContainer.appendChild(card);
   });
+  
+  console.log('✓ Live matches rendered:', liveMatches.length);
 }
 function renderMatches() {
   const container = document.getElementById('league-groups');
@@ -261,16 +212,22 @@ function renderMatches() {
   }
   
   container.innerHTML = '';
+  container.style.display = 'flex';
+  container.style.flexDirection = 'column';
+  
   const matches = getAllMatches();
   
-  console.log('📊 renderMatches called:', {
+  console.log('📊 renderMatches:', {
     totalMatches: matches.length,
-    container: container ? 'found' : 'missing'
+    containerFound: !!container
   });
   
   if(!matches.length){
-    container.innerHTML='<div style="color:#8B92A1;text-align:center;padding:32px;">No matches</div>';
-    console.warn('No matches to render');
+    const noMatch = document.createElement('div');
+    noMatch.style.cssText = 'color:#8B92A1;text-align:center;padding:32px;';
+    noMatch.textContent = 'No matches';
+    container.appendChild(noMatch);
+    console.warn('❌ No matches to render');
     return;
   }
 
@@ -281,26 +238,44 @@ function renderMatches() {
     leagues[id].matches.push(m);
   });
 
-  console.log('📋 Leagues to render:', Object.keys(leagues));
+  console.log('📋 Rendering', Object.keys(leagues).length, 'leagues');
 
   Object.values(leagues).forEach(l=>{
     const leagueGroup = document.createElement('div');
     leagueGroup.className='league-group-card';
-    leagueGroup.innerHTML=`
-      <div class="league-group-header">
-        <span>${l.logo?`<img src="${l.logo}" style="width:20px;height:20px;border-radius:50%;margin-right:6px;">`:'⚽'}</span>
-        <span>${l.name} - ${l.country}</span>
-      </div>
-    `;
+    leagueGroup.style.cssText = 'background:#181a1b;border-radius:14px;margin-bottom:18px;padding:0;overflow:hidden;';
+    
+    const header = document.createElement('div');
+    header.className = 'league-group-header';
+    header.style.cssText = 'background:#222325;padding:12px 20px;font-size:1rem;font-weight:700;color:#e8e8e8;border-bottom:1px solid #232323;';
+    header.innerHTML = `<span>${l.logo?l.logo:'⚽'}</span> <span>${l.name} - ${l.country}</span>`;
+    leagueGroup.appendChild(header);
+    
     l.matches.forEach(m=>{
       const row=document.createElement('div');
       row.className='match-row'+(m.status==='live'?' live-match':'');
-      row.innerHTML=`
-        <div class="match-team"><span class="match-team-name">${m.homeTeam}</span></div>
-        <div class="match-score">${m.homeScore??''} - ${m.awayScore??''}</div>
-        <div class="match-team"><span class="match-team-name">${m.awayTeam}</span></div>
-        <div class="match-time">${m.time?new Date(m.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):''}</div>
-      `;
+      row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr auto;gap:12px;padding:12px 20px;align-items:center;border-bottom:1px solid #232323;';
+      
+      const homeTeam = document.createElement('div');
+      homeTeam.style.cssText = 'text-align:right;';
+      homeTeam.textContent = m.homeTeam;
+      
+      const score = document.createElement('div');
+      score.style.cssText = 'font-weight:bold;text-align:center;color:#fff;';
+      score.textContent = (m.homeScore ?? '-') + ' - ' + (m.awayScore ?? '-');
+      
+      const awayTeam = document.createElement('div');
+      awayTeam.style.cssText = 'text-align:left;';
+      awayTeam.textContent = m.awayTeam;
+      
+      const time = document.createElement('div');
+      time.style.cssText = 'text-align:right;font-size:0.9rem;color:#8B92A1;';
+      time.textContent = m.time ? new Date(m.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+      
+      row.appendChild(homeTeam);
+      row.appendChild(score);
+      row.appendChild(awayTeam);
+      row.appendChild(time);
       leagueGroup.appendChild(row);
     });
     container.appendChild(leagueGroup);
@@ -370,59 +345,72 @@ setInterval(async ()=>{
 window.onload=async()=>{
   try {
     console.log('🚀 Initializing Zonera app...');
-    loadDates();
     
-    // First load mock data as fallback
+    // Load mock data first as the primary source
     loadMockData();
+    console.log('✓ Mock data loaded:', matchData.leagues.length, 'leagues');
     
-    // Try to fetch Gemini API
+    // Load dates
+    loadDates();
+    console.log('✓ Dates loaded');
+    
+    // Try to fetch Gemini API (optional, will use mock if fails)
     try {
       await fetchApiMatches();
     } catch (e) {
-      console.warn('Gemini fetch failed, keeping mock data');
+      console.warn('⚠ Gemini fetch failed, continuing with mock data');
     }
     
     // Try Firebase
     try {
       await fetchMatchesFromFirebase();
     } catch (e) {
-      console.warn('Firebase fetch failed');
+      console.warn('⚠ Firebase fetch failed');
     }
     
     // Try to listen to Firebase updates
     try {
       listenToMatchUpdates();
     } catch (e) {
-      console.warn('Firebase listener failed');
+      console.warn('⚠ Firebase listener failed');
     }
     
     // Render everything
+    console.log('📊 Rendering matches...');
     renderMatches();
-    renderLiveMatches();
+    console.log('✓ Matches rendered');
     
-    console.log('✓ App ready!');
-    console.log('Displaying:', {
-      apiMatches,
-      mockDataLoaded: matchData.leagues.length > 0
-    });
+    renderLiveMatches();
+    console.log('✓ Live matches rendered');
+    
+    console.log('✅ App ready!');
+    
   } catch (err) {
     console.error('❌ Fatal error:', err);
+    // Last resort - render mock data
     loadMockData();
     renderMatches();
   }
 
   // Date navigation
-  document.querySelector('.date-btn.prev')?.addEventListener('click',()=>{
-    dateOffset--;
-    loadDates();
-    renderMatches();
-    renderLiveMatches();
-  });
+  const prevBtn = document.querySelector('.date-btn.prev');
+  const nextBtn = document.querySelector('.date-btn.next');
   
-  document.querySelector('.date-btn.next')?.addEventListener('click',()=>{
-    dateOffset++;
-    loadDates();
-    renderMatches();
-    renderLiveMatches();
-  });
+  if (prevBtn) {
+    prevBtn.addEventListener('click', ()=>{
+      dateOffset--;
+      loadDates();
+      renderMatches();
+      renderLiveMatches();
+    });
+  }
+  
+  if (nextBtn) {
+    nextBtn.addEventListener('click', ()=>{
+      dateOffset++;
+      loadDates();
+      renderMatches();
+      renderLiveMatches();
+    });
+  }
 };
