@@ -173,26 +173,53 @@ function normalizeFD(match) {
 function getAllMatches() {
   let merged = [];
 
-  // Firebase
-  matchData.leagues.forEach(l => l.matches.forEach(m => merged.push({...m, league:{id:l.id,name:l.name,country:l.country,logo:l.logo}})));
-
-  // Gemini API
-  ['live','finished','upcoming'].forEach(type=>{
-    apiMatches[type].forEach(m=>{
+  // Firebase/Mock Data - already in the right format
+  matchData.leagues.forEach(l => {
+    l.matches.forEach(m => {
       merged.push({
-        homeTeam: m.teams.home.name,
-        awayTeam: m.teams.away.name,
-        homeScore: m.goals.home,
-        awayScore: m.goals.away,
-        status: type,
-        time: m.fixture.timestamp ? new Date(m.fixture.timestamp*1000).toISOString() : null,
-        league: { id:m.league.id, name:m.league.name, country:m.league.country, logo:m.league.logo }
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        status: m.status,
+        time: m.time,
+        league: { id: l.id, name: l.name, country: l.country, logo: l.logo }
       });
     });
   });
 
+  // Gemini API - convert from teams.home format
+  ['live','finished','upcoming'].forEach(type=>{
+    apiMatches[type].forEach(m=>{
+      try {
+        merged.push({
+          homeTeam: m.teams?.home?.name || m.homeTeam || 'Team A',
+          awayTeam: m.teams?.away?.name || m.awayTeam || 'Team B',
+          homeScore: m.goals?.home ?? m.homeScore,
+          awayScore: m.goals?.away ?? m.awayScore,
+          status: type,
+          time: m.fixture?.timestamp ? new Date(m.fixture.timestamp*1000).toISOString() : null,
+          league: { 
+            id: m.league?.id || 1, 
+            name: m.league?.name || 'League', 
+            country: m.league?.country || '', 
+            logo: m.league?.logo 
+          }
+        });
+      } catch (e) {
+        console.warn('Error processing Gemini match:', e, m);
+      }
+    });
+  });
+
   // Football-Data.org
-  footballDataMatches.forEach(m => merged.push(normalizeFD(m)));
+  footballDataMatches.forEach(m => {
+    try {
+      merged.push(normalizeFD(m));
+    } catch (e) {
+      console.warn('Error processing Football-Data match:', e);
+    }
+  });
 
   if(currentFilter!=='all') merged = merged.filter(m=>m.status===currentFilter);
   return merged;
@@ -228,10 +255,22 @@ function renderLiveMatches() {
 }
 function renderMatches() {
   const container = document.getElementById('league-groups');
+  if (!container) {
+    console.error('❌ Container #league-groups not found!');
+    return;
+  }
+  
   container.innerHTML = '';
   const matches = getAllMatches();
+  
+  console.log('📊 renderMatches called:', {
+    totalMatches: matches.length,
+    container: container ? 'found' : 'missing'
+  });
+  
   if(!matches.length){
     container.innerHTML='<div style="color:#8B92A1;text-align:center;padding:32px;">No matches</div>';
+    console.warn('No matches to render');
     return;
   }
 
@@ -241,6 +280,8 @@ function renderMatches() {
     if(!leagues[id]) leagues[id]={...m.league,matches:[]};
     leagues[id].matches.push(m);
   });
+
+  console.log('📋 Leagues to render:', Object.keys(leagues));
 
   Object.values(leagues).forEach(l=>{
     const leagueGroup = document.createElement('div');
@@ -264,7 +305,8 @@ function renderMatches() {
     });
     container.appendChild(leagueGroup);
   });
-  // Also update live matches section
+  
+  console.log('✓ Rendered', Object.keys(leagues).length, 'leagues');
   renderLiveMatches();
 }
 
