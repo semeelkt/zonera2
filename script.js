@@ -16,6 +16,11 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 // ======== FETCH FIREBASE MATCHES ========
 async function fetchMatchesFromFirebase() {
   try {
+    if (typeof db === 'undefined') {
+      console.warn('⚠ Firebase not initialized');
+      return;
+    }
+    
     const matchesSnapshot = await db.collection('matches').get();
     const leaguesSnapshot = await db.collection('leagues').get();
     const leaguesMap = {};
@@ -32,9 +37,9 @@ async function fetchMatchesFromFirebase() {
     });
 
     matchData.leagues = Object.values(leaguesMap).filter(l => l.matches.length > 0);
+    console.log('✓ Firebase matches loaded:', matchData.leagues.length, 'leagues');
   } catch (err) {
-    console.error('Firebase fetch error', err);
-    loadMockData();
+    console.warn('⚠ Firebase fetch error:', err.message);
   }
 }
 
@@ -71,49 +76,45 @@ function loadMockData() {
 // ======== FETCH GEMINI API ========
 async function fetchApiMatches() {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     
-    const now = Math.floor(Date.now() / 1000);
-    const prompt = `Generate a JSON array of 10 realistic football/soccer match fixtures with the following structure:
+    const prompt = `Generate a JSON array of 10 realistic football/soccer match fixtures. Return ONLY valid JSON, no markdown or backticks.
     [
       {
-        "id": number,
-        "status": "live" | "finished" | "upcoming",
+        "id": 1,
+        "status": "live",
         "teams": {
-          "home": { "name": "Team Name" },
-          "away": { "name": "Team Name" }
+          "home": { "name": "Manchester City" },
+          "away": { "name": "Arsenal" }
         },
         "goals": {
-          "home": number,
-          "away": number
+          "home": 2,
+          "away": 1
         },
         "fixture": {
-          "timestamp": unix timestamp
+          "timestamp": ${Math.floor(Date.now() / 1000)}
         },
         "league": {
-          "id": number,
-          "name": "League Name",
-          "country": "Country Name",
+          "id": 1,
+          "name": "Premier League",
+          "country": "England",
           "logo": null
         }
       }
     ]
     
-    Make sure to include:
-    - 3-4 matches with status "live" (with scores)
-    - 3-4 matches with status "finished" (with scores)
-    - 2-3 matches with status "upcoming" (with scores set to 0-0)
-    - Mix of different leagues (Premier League, La Liga, Serie A, Bundesliga, Ligue 1)
-    - Realistic team names and scores
-    - For live matches, use recent timestamps
-    - For upcoming matches, use future timestamps
+    Include:
+    - 3-4 matches with status "live" (with scores like 1-0, 2-1, etc)
+    - 3-4 matches with status "finished" (with final scores)
+    - 2-3 matches with status "upcoming" (with 0-0 scores)
+    - Mix of leagues: Premier League, La Liga, Serie A, Bundesliga, Ligue 1
     
-    Return ONLY valid JSON array, no markdown, no backticks, no additional text.`;
+    Return ONLY the JSON array.`;
     
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
     
-    // Parse the JSON from the response - handle cases where it might be wrapped
+    // Clean up the response
     let cleanText = responseText.trim();
     if (cleanText.startsWith('```')) {
       cleanText = cleanText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -121,19 +122,20 @@ async function fetchApiMatches() {
     
     const matches = JSON.parse(cleanText);
     
-    // Categorize matches by status from Gemini response
+    // Categorize matches by status
     apiMatches.live = matches.filter(m => m.status === 'live');
     apiMatches.finished = matches.filter(m => m.status === 'finished');
     apiMatches.upcoming = matches.filter(m => m.status === 'upcoming');
     
-    console.log('Gemini API matches loaded:', {
+    console.log('✓ Gemini API matches loaded:', {
       live: apiMatches.live.length,
       finished: apiMatches.finished.length,
-      upcoming: apiMatches.upcoming.length
+      upcoming: apiMatches.upcoming.length,
+      total: matches.length
     });
   } catch (err) {
-    console.error('Gemini API error', err);
-    apiMatches = { live: [], finished: [], upcoming: [] };
+    console.warn('⚠ Gemini API error:', err.message);
+    console.log('Using mock data instead...');
     loadMockData();
   }
 }
@@ -141,13 +143,11 @@ async function fetchApiMatches() {
 // ======== NORMALIZE FOOTBALL DATA ========
 async function fetchFootballData() {
   try {
-    const res = await fetch('https://api.football-data.org/v4/matches', {
-      headers: { 'X-Auth-Token': 'fd81f1998248477eb823f962a071cf6e' }
-    });
-    const data = await res.json();
-    footballDataMatches = data.matches || [];
+    // Skip if CORS is blocked - Football-Data API doesn't support CORS from browsers
+    console.log('⚠ Football-Data API requires backend proxy (CORS blocked in browser)');
+    footballDataMatches = [];
   } catch (err) {
-    console.error('Football-Data error', err);
+    console.warn('⚠ Football-Data error:', err.message);
   }
 }
 
@@ -321,27 +321,47 @@ setInterval(async ()=>{
 // ======== INIT ========
 window.onload=async()=>{
   try {
-    console.log('Initializing app...');
+    console.log('🚀 Initializing Zonera app...');
     loadDates();
     
-    // Fetch all data sources
-    await Promise.all([
+    // Fetch all data sources (continue even if some fail)
+    await Promise.allSettled([
       fetchMatchesFromFirebase(),
       fetchApiMatches(),
       fetchFootballData()
     ]);
     
+    // Try to listen to Firebase updates
     listenToMatchUpdates();
+    
+    // Ensure we have at least mock data
+    if (!apiMatches.live.length && !apiMatches.finished.length && !apiMatches.upcoming.length) {
+      console.log('📦 Loading mock data...');
+      loadMockData();
+    }
+    
     renderMatches();
     renderLiveMatches();
     
-    console.log('App initialized successfully');
+    console.log('✓ App ready!');
   } catch (err) {
     console.error('Initialization error:', err);
     loadMockData();
     renderMatches();
   }
 
-  document.querySelector('.date-btn.prev')?.addEventListener('click',()=>{dateOffset--;loadDates();renderMatches();renderLiveMatches();});
-  document.querySelector('.date-btn.next')?.addEventListener('click',()=>{dateOffset++;loadDates();renderMatches();renderLiveMatches();});
+  // Date navigation
+  document.querySelector('.date-btn.prev')?.addEventListener('click',()=>{
+    dateOffset--;
+    loadDates();
+    renderMatches();
+    renderLiveMatches();
+  });
+  
+  document.querySelector('.date-btn.next')?.addEventListener('click',()=>{
+    dateOffset++;
+    loadDates();
+    renderMatches();
+    renderLiveMatches();
+  });
 };
