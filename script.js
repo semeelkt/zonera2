@@ -23,6 +23,12 @@ async function fetchMatchesFromFirebase() {
     
     const matchesSnapshot = await db.collection('matches').get();
     const leaguesSnapshot = await db.collection('leagues').get();
+    
+    if (matchesSnapshot.empty && leaguesSnapshot.empty) {
+      console.warn('⚠ No Firebase data found - using mock data');
+      return;
+    }
+    
     const leaguesMap = {};
     
     leaguesSnapshot.forEach(doc => {
@@ -33,11 +39,15 @@ async function fetchMatchesFromFirebase() {
     matchesSnapshot.forEach(doc => {
       const match = { id: doc.id, ...doc.data() };
       const leagueId = match.leagueId || 'other';
-      if (leaguesMap[leagueId]) leaguesMap[leagueId].matches.push(match);
+      if (leaguesMap[leagueId]) {
+        leaguesMap[leagueId].matches.push(match);
+      }
     });
 
     matchData.leagues = Object.values(leaguesMap).filter(l => l.matches.length > 0);
-    console.log('✓ Firebase matches loaded:', matchData.leagues.length, 'leagues');
+    if (matchData.leagues.length > 0) {
+      console.log('✓ Firebase matches loaded:', matchData.leagues.length, 'leagues');
+    }
   } catch (err) {
     console.warn('⚠ Firebase fetch error:', err.message);
   }
@@ -76,9 +86,42 @@ function loadMockData() {
 // ======== FETCH GEMINI API ========
 async function fetchApiMatches() {
   try {
-    // Skip Gemini for now - it's causing errors
-    console.log('⏭️ Skipping Gemini API (model availability issues)');
-    apiMatches = { live: [], finished: [], upcoming: [] };
+    console.log('🤖 Fetching live matches from Gemini API...');
+    
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    
+    const prompt = `Get me current live football/soccer matches happening right now. 
+    For each match provide in JSON format:
+    {
+      "matches": [
+        {
+          "homeTeam": "team name",
+          "awayTeam": "team name", 
+          "homeScore": number,
+          "awayScore": number,
+          "status": "live",
+          "league": "league name",
+          "country": "country",
+          "time": "HH:MM UTC"
+        }
+      ]
+    }
+    Only return JSON, no other text.`;
+    
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+    
+    // Extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const data = JSON.parse(jsonMatch[0]);
+      apiMatches.live = data.matches || [];
+      console.log('✓ Gemini API returned', apiMatches.live.length, 'live matches');
+    } else {
+      console.warn('⚠ Could not parse Gemini response');
+      apiMatches = { live: [], finished: [], upcoming: [] };
+    }
   } catch (err) {
     console.warn('⚠ Gemini API error:', err.message);
     apiMatches = { live: [], finished: [], upcoming: [] };
@@ -219,15 +262,17 @@ function renderMatches() {
   
   console.log('📊 renderMatches:', {
     totalMatches: matches.length,
-    containerFound: !!container
+    leaguesCount: matchData.leagues.length,
+    containerFound: !!container,
+    mockDataLoaded: matchData.leagues.length > 0
   });
   
   if(!matches.length){
     const noMatch = document.createElement('div');
     noMatch.style.cssText = 'color:#8B92A1;text-align:center;padding:32px;';
-    noMatch.textContent = 'No matches';
+    noMatch.textContent = 'No matches - loading data...';
     container.appendChild(noMatch);
-    console.warn('❌ No matches to render');
+    console.warn('⚠ No matches to render yet');
     return;
   }
 
@@ -335,30 +380,51 @@ function listenToMatchUpdates() {
 }
 
 setInterval(async ()=>{
+  console.log('🔄 Refreshing live match data...');
   await fetchApiMatches();
   await fetchFootballData();
   await fetchMatchesFromFirebase();
   renderMatches();
-},60000);
+  renderLiveMatches();
+},30000); // Update every 30 seconds for live data
 
 // ======== INIT ========
-window.onload=async()=>{
+async function initializeApp() {
   try {
     console.log('🚀 Initializing Zonera app...');
     
-    // Load mock data first as the primary source
+    // Verify DOM is ready
+    const container = document.getElementById('league-groups');
+    const dateList = document.getElementById('date-list');
+    if (!container || !dateList) {
+      console.error('❌ Required DOM elements not found');
+      return;
+    }
+    
+    // Load mock data as fallback
     loadMockData();
-    console.log('✓ Mock data loaded:', matchData.leagues.length, 'leagues');
+    console.log('✓ Mock data loaded as fallback:', matchData.leagues.length, 'leagues');
     
     // Load dates
     loadDates();
     console.log('✓ Dates loaded');
     
-    // Try to fetch Gemini API (optional, will use mock if fails)
+    // Fetch LIVE data from Gemini API FIRST
+    console.log('⏳ Fetching LIVE matches from Gemini API...');
     try {
       await fetchApiMatches();
+      if (apiMatches.live.length > 0) {
+        console.log('✅ Got', apiMatches.live.length, 'live matches from Gemini!');
+      }
     } catch (e) {
-      console.warn('⚠ Gemini fetch failed, continuing with mock data');
+      console.warn('⚠ Gemini API fetch failed');
+    }
+    
+    // Try to fetch Gemini API for other matches
+    try {
+      await fetchFootballData();
+    } catch (e) {
+      console.warn('⚠ Football Data fetch failed');
     }
     
     // Try Firebase
@@ -391,7 +457,11 @@ window.onload=async()=>{
     loadMockData();
     renderMatches();
   }
+}
 
+window.addEventListener('DOMContentLoaded', async () => {
+  await initializeApp();
+  
   // Date navigation
   const prevBtn = document.querySelector('.date-btn.prev');
   const nextBtn = document.querySelector('.date-btn.next');
@@ -413,4 +483,4 @@ window.onload=async()=>{
       renderLiveMatches();
     });
   }
-};
+});
