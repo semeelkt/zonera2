@@ -823,10 +823,28 @@
     </div>
 
     <script>
-        // API endpoints: try same-origin first, then fall back to local Flask server.
+        // API endpoints: allow override via `?api=` query param, otherwise try same-origin then fallbacks.
         const RELATIVE_API = '/api/matches';
         const LOCAL_API = 'http://127.0.0.1:5000/api/matches';
         const FILE_API = 'http://127.0.0.1:5000/api/matches';
+
+        // If user provided ?api=<url> it will be used as primary API endpoint.
+        function getQueryParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+        const API_OVERRIDE = (() => {
+            const v = getQueryParam('api');
+            if (!v) return null;
+            try {
+                // normalize: if path provided without /api/matches, append
+                const parsed = new URL(v, window.location.href);
+                if (!parsed.pathname || parsed.pathname === '/') parsed.pathname = '/api/matches';
+                return parsed.href.replace(/\/$/, '') + (parsed.pathname.endsWith('/api/matches') ? '' : '/api/matches');
+            } catch (e) {
+                return null;
+            }
+        })();
 
         let allMatches = [];
         let currentFilter = 'all';
@@ -908,7 +926,22 @@
         async function fetchMatches() {
             showLoading();
             clearError();
-
+            // If API override was provided in URL (?api=...), use it first.
+            if (API_OVERRIDE) {
+                try {
+                    const resp = await fetch(API_OVERRIDE);
+                    if (!resp.ok) throw new Error(`API override returned ${resp.status}`);
+                    const data = await resp.json();
+                    allMatches = data.matches || [];
+                    filterAndDisplayMatches();
+                    updateStats();
+                    return;
+                } catch (err) {
+                    showError('⚠️ Failed to load matches from API override. Check the `api` query parameter.');
+                    console.error('Fetch error (api override):', err);
+                    return;
+                }
+            }
             // Choose order: if opened via file://, directly use local API.
             if (window.location.protocol === 'file:') {
                 try {
