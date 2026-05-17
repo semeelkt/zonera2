@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <title>Football Live Scores - Premium Sports</title>
     <style>
         * {
@@ -822,8 +823,10 @@
     </div>
 
     <script>
-        // Use relative URL for API
-        const API_BASE = '/api/matches';
+        // API endpoints: try same-origin first, then fall back to local Flask server.
+        const RELATIVE_API = '/api/matches';
+        const LOCAL_API = 'http://127.0.0.1:5000/api/matches';
+        const FILE_API = 'http://127.0.0.1:5000/api/matches';
 
         let allMatches = [];
         let currentFilter = 'all';
@@ -903,13 +906,73 @@
         }
 
         async function fetchMatches() {
+            showLoading();
+            clearError();
+
+            // Choose order: if opened via file://, directly use local API.
+            if (window.location.protocol === 'file:') {
+                try {
+                    const resp = await fetch(FILE_API);
+                    if (!resp.ok) throw new Error('Local API returned non-ok');
+                    const data = await resp.json();
+                    allMatches = data.matches || [];
+                    filterAndDisplayMatches();
+                    updateStats();
+                    return;
+                } catch (err) {
+                    showError('⚠️ Failed to load matches from local server. Make sure Python server is running on port 5000.');
+                    console.error('Fetch error (file -> local):', err);
+                    return;
+                }
+            }
+
+            // When served from a web preview (codespaces / gh.dev), the origin may not proxy API requests.
+            // Try same-origin first, then fall back to localhost.
             try {
-                showLoading();
-                clearError();
+                let response = null;
 
-                const response = await fetch(API_BASE);
+                try {
+                    response = await fetch(RELATIVE_API);
+                } catch (e) {
+                    response = null;
+                }
 
-                if (!response.ok) throw new Error('Failed to fetch matches');
+                if (!response || !response.ok) {
+                    // fallback: try Codespaces/GH.dev host pattern by inserting '-5000' before '.app.github.dev'
+                    const tryCodespacesHost = (port) => {
+                        try {
+                            const h = window.location.hostname;
+                            if (h && h.endsWith('.app.github.dev')) {
+                                const base = h.replace(/-\d+(?=\.app\.github\.dev$)/, '');
+                                return `${window.location.protocol}//${base}-${port}.app.github.dev/api/matches`;
+                            }
+                            return `${window.location.protocol}//${window.location.hostname}:${port}/api/matches`;
+                        } catch (e) {
+                            return null;
+                        }
+                    };
+
+                    const codespacesUrl = tryCodespacesHost(5000);
+                    if (codespacesUrl) {
+                        try {
+                            response = await fetch(codespacesUrl);
+                        } catch (e) {
+                            response = null;
+                        }
+                    }
+
+                    // final fallback to local Flask server
+                    if (!response || !response.ok) {
+                        try {
+                            response = await fetch(LOCAL_API);
+                        } catch (e) {
+                            response = null;
+                        }
+                    }
+                }
+
+                if (!response) throw new Error('No response from API');
+                if (!response.ok) throw new Error(`API responded with ${response.status}`);
 
                 const data = await response.json();
                 allMatches = data.matches || [];
