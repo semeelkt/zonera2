@@ -959,60 +959,60 @@
                 }
             }
 
-            // When served from a web preview (codespaces / gh.dev), the origin may not proxy API requests.
-            // Try same-origin first, then fall back to localhost.
+            // When served from a web preview, the origin may not proxy API requests correctly.
+            // Build a list of candidate API URLs and try them in order until one succeeds.
             try {
-                let response = null;
+                const candidates = new Set();
 
+                // 1) Same-origin relative
+                candidates.add(RELATIVE_API);
+
+                // 2) If hostname matches Codespaces/GH.dev pattern, try replacing the numeric suffix with 5000
                 try {
-                    response = await fetch(RELATIVE_API);
-                } catch (e) {
-                    response = null;
+                    const h = window.location.hostname || '';
+                    if (/\-\d+\.app\.github\.dev$/.test(h)) {
+                        const base = h.replace(/-\d+(?=\.app\.github\.dev$)/, '');
+                        candidates.add(`${window.location.protocol}//${base}-5000.app.github.dev/api/matches`);
+                    }
+                } catch (e) { /* ignore */ }
+
+                // 3) Try origin with explicit :5000 (useful when preview proxies by port)
+                try {
+                    candidates.add(`${window.location.protocol}//${window.location.hostname}:5000/api/matches`);
+                } catch (e) { /* ignore */ }
+
+                // 4) Localhost fallback
+                candidates.add(LOCAL_API);
+
+                // Convert to array preserving order
+                const urls = Array.from(candidates);
+
+                let success = false;
+                let lastError = null;
+                for (const url of urls) {
+                    try {
+                        console.log('Trying API URL:', url);
+                        const resp = await fetch(url);
+                        if (resp && resp.ok) {
+                            const data = await resp.json();
+                            allMatches = data.matches || [];
+                            filterAndDisplayMatches();
+                            updateStats();
+                            success = true;
+                            break;
+                        } else {
+                            lastError = resp ? `status ${resp.status}` : 'no response';
+                        }
+                    } catch (err) {
+                        lastError = err;
+                    }
                 }
 
-                if (!response || !response.ok) {
-                    // fallback: try Codespaces/GH.dev host pattern by inserting '-5000' before '.app.github.dev'
-                    const tryCodespacesHost = (port) => {
-                        try {
-                            const h = window.location.hostname;
-                            if (h && h.endsWith('.app.github.dev')) {
-                                const base = h.replace(/-\d+(?=\.app\.github\.dev$)/, '');
-                                return `${window.location.protocol}//${base}-${port}.app.github.dev/api/matches`;
-                            }
-                            return `${window.location.protocol}//${window.location.hostname}:${port}/api/matches`;
-                        } catch (e) {
-                            return null;
-                        }
-                    };
-
-                    const codespacesUrl = tryCodespacesHost(5000);
-                    if (codespacesUrl) {
-                        try {
-                            response = await fetch(codespacesUrl);
-                        } catch (e) {
-                            response = null;
-                        }
-                    }
-
-                    // final fallback to local Flask server
-                    if (!response || !response.ok) {
-                        try {
-                            response = await fetch(LOCAL_API);
-                        } catch (e) {
-                            response = null;
-                        }
-                    }
+                if (!success) {
+                    throw new Error(`No reachable API. Last error: ${lastError}`);
                 }
-
-                if (!response) throw new Error('No response from API');
-                if (!response.ok) throw new Error(`API responded with ${response.status}`);
-
-                const data = await response.json();
-                allMatches = data.matches || [];
-                filterAndDisplayMatches();
-                updateStats();
             } catch (error) {
-                showError('⚠️ Failed to load matches. Make sure Python server is running on port 5000.');
+                showError('⚠️ Failed to load matches. Make sure Python server is running on port 5000 or use ?api= to override.');
                 console.error('Fetch error:', error);
             }
         }
